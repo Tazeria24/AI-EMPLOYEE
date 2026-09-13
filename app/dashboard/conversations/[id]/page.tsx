@@ -16,6 +16,7 @@ import type { SenderType } from "@/lib/conversations/types";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AuthMessage } from "@/components/auth/auth-message";
+import { createLeadFromConversation } from "@/lib/leads/actions";
 import { LiveRefresh } from "../live-refresh";
 
 const SENDER_LABEL: Record<SenderType, string> = {
@@ -102,6 +103,12 @@ export default async function ConversationPage({
               </Button>
             </form>
           ) : null}
+          <form action={createLeadFromConversation}>
+            <input type="hidden" name="conversationId" value={id} />
+            <Button type="submit" size="sm" variant="outline">
+              Create lead
+            </Button>
+          </form>
           {canTransition(conversation.status, "close") ? (
             <form action={closeConversation}>
               <input type="hidden" name="conversationId" value={id} />

@@ -298,3 +298,44 @@ locked function rather than in the app.
   ANTHROPIC_API_KEY / VOYAGE_API_KEY / a Supabase project, as in M05. Realtime
   delivery itself is likewise unverified (no Supabase project); the 15s poll is
   the reason the inbox still works without it.
+
+---
+
+## Milestone 07 — Leads
+- date: 2026-09-13
+- commit: (this commit)
+- tests: `npm test` — 99 passed / 99 (Vitest), up from 90. Added the lead status
+  model suite (9 cases: status list matches the DB constraint, terminal states,
+  safe validation of unknown values, transition classification incl. reopen)
+- typecheck: `npm run typecheck` — pass
+- lint: `npm run lint` — pass
+- build: `npm run build` — pass (adds /dashboard/leads and /dashboard/leads/[id];
+  20 routes + Proxy)
+- isolation suites: **all six PASSED** on real PostgreSQL 16, psql exit 0 —
+  tenant, products, knowledge, agent, conversations, and the new leads suite.
+  No regressions.
+- the leads suite covers the pipeline operations specifically (M05's agent suite
+  covered the raw tables). As user A:
+    - sees only own leads and lead events; org B's intent text never appears
+    - can move own lead through statuses, score it and add notes
+    - cannot move org B's lead (0 rows), cannot rewrite its score/notes (0 rows)
+    - cannot write to org B's activity timeline (insufficient_privilege)
+    - cannot delete org B's lead (0 rows)
+    - afterwards org B's status, score, notes and event count are unchanged
+- manual QA (`npm start`, dummy env):
+    - /dashboard/leads unauthenticated → 307 → /login?redirect=...
+    - /dashboard/leads/[id] unauthenticated → 307 → /login
+- security checks:
+  - every action re-derives organizationId from the session and scopes writes
+    with `.eq("organization_id", ctx.organizationId)` on top of RLS
+  - members (non-admin) get a read-only pipeline: no status buttons, no edit form
+  - lead status from the form is validated against the status list before use,
+    so an edited form value cannot write an unknown status
+  - creating a lead from a conversation refuses to create a duplicate for a
+    conversation that already has one
+- notes:
+  - score is manual (ADR-042); the AI does not guess one
+  - transitions are permissive but every change is recorded (ADR-043)
+- not verified here: AI-captured leads end-to-end still need a live model and
+  Supabase project, as in M05/M06. The create_lead → conversation link is
+  covered by typecheck and the isolation suite, not by a live run.

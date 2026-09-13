@@ -43,8 +43,13 @@ Status: IN PROGRESS
   conversation-aware agent replies; takeover race fixed in the database and
   proved with two concurrent connections)
 
+- **Milestone 07 — Leads** (pipeline list with per-status counts + search, lead
+  detail with contact info, status moves, score/intent/notes editing, full
+  activity timeline from lead_events, conversation-to-lead creation, AI-captured
+  leads linked to their conversation)
+
 ## Current milestone
-06 — Conversations (complete); Milestone 05's live evaluation still outstanding
+07 — Leads (complete); Milestone 05's live evaluation still outstanding
 
 ## Next action
 Milestone 05 is built and verified deterministically, but its acceptance
@@ -59,8 +64,10 @@ met yet: no live model run has happened. To close it out:
 Milestone 06 is complete and did not need those credentials (its critical
 property, the takeover race, is proved in SQL). Milestone 05's live evaluation
 remains the outstanding item before the agent can be trusted with real
-customers. Next milestone: 07 — Leads (the leads/lead_events tables already
-exist from M05; M07 adds the pipeline UI, scoring and the activity timeline).
+customers. Next milestone: 08 — Automations (scheduler, inactive-lead trigger,
+AI-generated follow-ups, max-two-follow-up rule, idempotency). Note the audit's
+finding #11: the two-follow-up limit and de-duplication must be enforced in the
+data layer, not just in application logic.
 
 ## Rule
 Update this file after every completed milestone.

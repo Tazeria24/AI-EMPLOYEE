@@ -170,4 +170,16 @@ Reason: realtime is part of the already-chosen Supabase stack, so it adds no ven
 Decision: migration 0006 adds the foreign key from `leads.conversation_id` to `conversations(id) on delete set null`.
 Reason: ADR-034 left the column unconstrained only because `conversations` did not exist yet. With the table created, the deferred integrity gap is closed as planned.
 
+## ADR-042 — Lead scoring is manual, not inferred (accepted)
+Decision: `leads.score` is entered by the business (0–100). The AI captures intent and contact details but does not invent a score.
+Reason: there is no conversion history yet to calibrate a model or heuristic against, so any generated number would be arbitrary while looking authoritative — exactly the "never invent business facts" failure mode the product exists to avoid. Revisit once real won/lost outcomes exist to learn from.
+
+## ADR-043 — Permissive pipeline transitions, strict recording (accepted)
+Decision: any lead status may follow any other (only a no-op or unknown status is rejected); every change is classified (progress / regress / won / lost / reopen) and written to `lead_events`.
+Reason: real sales move backwards and dead deals get revived, so a restrictive state machine would fight the user. The value is in an accurate, complete timeline rather than in refusing transitions.
+
+## ADR-044 — Leads captured by the AI link to their conversation (accepted)
+Decision: `ToolContext` carries an optional `conversationId`, so `create_lead` attaches the conversation the agent is answering in; creating a lead by hand from a thread reuses that conversation's customer and refuses to create a second lead for the same conversation.
+Reason: the FK became usable once M06 created `conversations` (ADR-041). Linking lead and thread means the pipeline can show what was actually said, and prevents duplicate leads per conversation.
+
 Add future decisions here. Do not rewrite history; append revisions.

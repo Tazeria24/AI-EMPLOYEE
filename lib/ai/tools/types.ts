@@ -8,6 +8,8 @@ import type { ChatToolSpec } from "@/lib/ai/provider/types";
 export interface ToolContext {
   organizationId: string;
   userId: string;
+  /** Set when the agent runs inside a conversation, so captured leads link to it. */
+  conversationId?: string;
 }
 
 export interface ToolOutcome {

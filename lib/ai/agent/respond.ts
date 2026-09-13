@@ -66,7 +66,7 @@ export async function respondInConversation(
   const startedAt = Date.now();
   const result = await runAgentTurn(
     provider,
-    { organizationId, userId },
+    { organizationId, userId, conversationId },
     {
       systemPrompt,
       userMessage: lastCustomerMessage.content,

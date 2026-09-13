@@ -6,11 +6,11 @@ answers questions, recommends products, captures and qualifies leads, follows
 up, escalates to humans and reports activity — using **verified business data
 only**.
 
-Implemented so far: **Milestones 00–06** — application foundation,
+Implemented so far: **Milestones 00–07** — application foundation,
 authentication, multi-tenancy with RLS, the product catalog, the knowledge base
 with pgvector retrieval, the AI agent (implementation complete; live evaluation
-still pending — see `progress/PROGRESS.md`), and the conversation inbox with
-human takeover. See `docs/` for specifications and `progress/`
+still pending — see `progress/PROGRESS.md`), the conversation inbox with human
+takeover, and the lead pipeline. See `docs/` for specifications and `progress/`
 for status, test results and decisions.
 
 ## Tech stack
@@ -109,6 +109,7 @@ psql -d app -f supabase/tests/products_isolation.sql    # prints PASSED on succe
 psql -d app -f supabase/tests/knowledge_isolation.sql   # prints PASSED on success
 psql -d app -f supabase/tests/agent_isolation.sql       # prints PASSED on success
 psql -d app -f supabase/tests/conversations_isolation.sql
+psql -d app -f supabase/tests/leads_isolation.sql
 ```
 
 On Supabase the shim is unnecessary — `auth.uid()` and the `authenticated`
@@ -179,6 +180,7 @@ lib/                 Utilities and integrations
   products/          Product/category service, actions, validation, types
   knowledge/         Knowledge documents, chunking, indexing, retrieval
   conversations/     Inbox service, actions and the AI/human state machine
+  leads/             Pipeline service, actions, status model and validation
   leads/             Customer + lead capture service and validation
   ai/provider/       Chat + embedding provider abstractions (Anthropic, Voyage, stub)
   ai/prompts/        System prompt construction

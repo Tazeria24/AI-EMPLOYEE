@@ -33,6 +33,12 @@ export default async function DashboardLayout({
               Conversations
             </Link>
             <Link
+              href="/dashboard/leads"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Leads
+            </Link>
+            <Link
               href="/dashboard/products"
               className="text-sm text-muted-foreground hover:text-foreground"
             >
