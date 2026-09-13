@@ -66,4 +66,20 @@ Reason: satisfies "base UI primitives" for the foundation while honoring CLAUDE.
 Decision: read environment variables inside accessor functions (lib/env.ts) that throw a clear error when a required value is missing, rather than validating at module import.
 Reason: a missing variable fails at the point of use with an actionable message and never breaks the production build; keeps public (NEXT_PUBLIC_*) and server-only secrets clearly separated per docs/SECURITY.md.
 
+## ADR-018 — Auth via Server Actions + @supabase/ssr (accepted)
+Decision: implement auth with Next Server Actions calling @supabase/ssr clients; sessions live in cookies and are refreshed in proxy (middleware). Always verify identity with `supabase.auth.getUser()` (which revalidates the token), never by trusting session cookies alone.
+Reason: matches current Supabase SSR guidance for the App Router, keeps secrets server-side, and gives durable SSR sessions that survive refresh.
+
+## ADR-019 — Route protection in proxy + server-side guard (accepted)
+Decision: protect /dashboard in proxy (redirect unauthenticated users to /login) and additionally guard in the dashboard layout server component. If Supabase env is absent, proxy skips session handling so public pages still render.
+Reason: defense in depth — a single missed check should not expose tenant surfaces. The layout guard also covers any path the proxy matcher might miss.
+
+## ADR-020 — Adopt Next 16 `proxy` convention (accepted)
+Decision: use `proxy.ts` (exporting `proxy`) instead of the deprecated `middleware.ts`.
+Reason: Next 16 deprecated the `middleware` filename in favor of `proxy`; adopting it now avoids a deprecation warning and future breakage (CLAUDE.md: prefer current APIs).
+
+## ADR-021 — No user enumeration on password reset (accepted)
+Decision: the password-reset action always returns the same "if that email is registered, a link is on its way" message and does not surface provider errors.
+Reason: avoids leaking which email addresses have accounts (docs/SECURITY.md — validate inputs, avoid leaking internal state).
+
 Add future decisions here. Do not rewrite history; append revisions.

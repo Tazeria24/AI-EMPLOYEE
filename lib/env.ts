@@ -28,6 +28,21 @@ export function getPublicSupabaseConfig(): { url: string; anonKey: string } {
 }
 
 /**
+ * Public Supabase configuration, or null when it is not configured.
+ * Used where the app should still boot without Supabase env (e.g. middleware
+ * on public pages), rather than throwing.
+ */
+export function getOptionalPublicSupabaseConfig(): {
+  url: string;
+  anonKey: string;
+} | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return null;
+  return { url, anonKey };
+}
+
+/**
  * Server-only. The service-role key bypasses RLS, so it must only be read in
  * trusted server contexts (never in client code or request-scoped handlers
  * that act on behalf of a user). See ADR-011 / docs/SECURITY.md.

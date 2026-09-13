@@ -62,15 +62,39 @@ See `.env.example`. Conventions:
 | `npm test`          | Run the Vitest suite once            |
 | `npm run test:watch`| Run Vitest in watch mode             |
 
+## Authentication
+
+Auth uses Supabase with `@supabase/ssr` (cookie-based SSR sessions). Routes:
+
+- `/signup`, `/login`, `/forgot-password`, `/reset-password`
+- `/auth/confirm` — handles email verification and password-recovery links
+- `/dashboard` — protected; unauthenticated visitors are redirected to `/login`
+
+Sessions are refreshed in `proxy.ts`, and identity is always verified with
+`supabase.auth.getUser()` (never trusted from cookies alone). Protected routes
+are guarded both in the proxy and in the dashboard layout (defense in depth).
+
+To make email flows work, configure your Supabase project's Auth settings:
+
+- Add your site URL and `${SITE_URL}/auth/confirm` to the allowed redirect URLs.
+- Set `NEXT_PUBLIC_SITE_URL` in production (falls back to request headers in dev).
+
 ## Project structure
 
 ```
 app/                 App Router routes and layouts
   api/health/        Health-check route handler
-components/ui/       Reusable UI primitives (Button, Card)
+  login, signup, …   Auth pages
+  auth/confirm/      Email verification / recovery callback
+  dashboard/         Protected area (auth-guarded layout)
+components/ui/       Reusable UI primitives (Button, Card, Input, Label)
+components/auth/     Auth-specific presentational components
 lib/                 Utilities and integrations
   env.ts             Environment access + validation
-  supabase/          Browser and server Supabase clients
+  site-url.ts        Resolve the site origin for email redirects
+  supabase/          Browser, server and proxy Supabase clients
+  auth/              Auth server actions + input validation
+proxy.ts             Session refresh + route protection (Next 16 proxy)
 docs/                Product, architecture, security specifications
 progress/            PROGRESS, DECISIONS (ADRs), TEST_RESULTS
 tasks/               Milestone task definitions (00–13)

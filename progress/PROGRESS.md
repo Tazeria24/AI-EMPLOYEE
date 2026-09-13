@@ -13,13 +13,16 @@ Status: IN PROGRESS
 - **Milestone 00 — Foundation** (Next.js App Router + TS, Tailwind v4,
   shadcn/ui-style primitives, Supabase client/server modules, env conventions,
   health check, lint + Vitest, README)
+- **Milestone 01 — Authentication** (signup, login, logout, password reset,
+  email verification, protected /dashboard, SSR sessions via @supabase/ssr;
+  route protection in proxy + server-side guard)
 
 ## Current milestone
-01 — Authentication (next)
+02 — Multi-tenancy (next)
 
 ## Next action
-Read tasks/01-authentication.md. Implement Supabase auth (signup, login,
-logout, reset, verification, protected route, SSR sessions with @supabase/ssr).
+Read tasks/02-multi-tenancy.md. Implement organizations, organization_members,
+business_profiles, roles, onboarding, RLS policies and tenant-isolation tests.
 
 ## Rule
 Update this file after every completed milestone.
