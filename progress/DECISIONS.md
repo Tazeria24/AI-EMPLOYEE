@@ -50,4 +50,20 @@ Reason: closes the unspecified `profiles` ↔ `auth.users` / org-creation gap be
 Decision: CI runs typecheck + lint + unit tests + build from Milestone 00, and the tenant-isolation, cross-tenant-retrieval, and prompt-injection suites are required checks (not deferred to tasks/12).
 Reason: TEST_RESULTS is empty and there is no CI; gating early prevents milestones being marked "done" without enforced verification and stops isolation regressions from accumulating.
 
+## ADR-014 — Vitest + Testing Library for tests (accepted)
+Decision: use Vitest with @testing-library/react and jsdom as the test runner.
+Reason: native ESM/TypeScript support, fast, integrates with the Vite toolchain, and works cleanly alongside Next 16. Establishes the test framework required by Milestone 00.
+
+## ADR-015 — System font stack instead of next/font Google fonts (accepted)
+Decision: use a system font stack (defined in app/globals.css) rather than fetching Geist via next/font/google.
+Reason: keeps the production build hermetic (no build-time network fetch of font files), which is more reliable in restricted/CI environments. Can revisit and adopt a self-hosted brand font later without architectural change.
+
+## ADR-016 — UI primitives authored in-repo, minimal dependencies (accepted)
+Decision: author shadcn/ui-style primitives (Button, Card) directly in components/ui using class-variance-authority + clsx + tailwind-merge; do not add Radix UI (e.g. Slot/asChild) until interactive components require it. components.json is present so future `shadcn add` stays consistent.
+Reason: satisfies "base UI primitives" for the foundation while honoring CLAUDE.md's "do not install dependencies without justification." Radix and other primitives are added when a milestone actually needs them.
+
+## ADR-017 — Lazy, fail-loud environment access (accepted)
+Decision: read environment variables inside accessor functions (lib/env.ts) that throw a clear error when a required value is missing, rather than validating at module import.
+Reason: a missing variable fails at the point of use with an actionable message and never breaks the production build; keeps public (NEXT_PUBLIC_*) and server-only secrets clearly separated per docs/SECURITY.md.
+
 Add future decisions here. Do not rewrite history; append revisions.
