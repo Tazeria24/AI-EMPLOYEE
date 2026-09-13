@@ -82,4 +82,20 @@ Reason: Next 16 deprecated the `middleware` filename in favor of `proxy`; adopti
 Decision: the password-reset action always returns the same "if that email is registered, a link is on its way" message and does not surface provider errors.
 Reason: avoids leaking which email addresses have accounts (docs/SECURITY.md — validate inputs, avoid leaking internal state).
 
+## ADR-022 — Atomic org provisioning via signup trigger (accepted, implements ADR-012)
+Decision: a SECURITY DEFINER trigger `handle_new_user()` on `auth.users` creates the profile, organization, owner membership and an empty business profile in one transaction on signup.
+Reason: guarantees no org-less users and no wrong-tenant fallback (ADR-012), and does it at the database layer so it holds regardless of which app path created the user.
+
+## ADR-023 — SECURITY DEFINER membership helpers (accepted)
+Decision: `is_org_member(org)` and `is_org_admin(org)` are SECURITY DEFINER SQL functions with `set search_path = ''`, used inside RLS policies.
+Reason: policies on `organization_members` that check membership would recurse into the same table; a definer function reads it without re-triggering RLS, which is the supported Supabase pattern.
+
+## ADR-024 — Role model: members read, owner/admin write (accepted)
+Decision: for organization-owned tables, any member may read; only owner/admin may write. The `anon` role is not granted access to tenant tables at all.
+Reason: least privilege for the dashboard surface; public/widget access (later milestones) will use a separate, explicitly-scoped path rather than the tenant tables directly.
+
+## ADR-025 — Migrations in supabase/migrations; local RLS test harness (accepted)
+Decision: SQL migrations live in `supabase/migrations/`. Because CI has no Supabase CLI, tenant-isolation tests run as a plain-SQL script (`supabase/tests/tenant_isolation.sql`) against any PostgreSQL, using a small local-only auth shim (`supabase/tests/00_supabase_shim.sql`) that emulates `auth.uid()` and the Supabase roles.
+Reason: keeps migrations reproducible and lets the critical isolation tests run without external infrastructure; on real Supabase the shim is unnecessary.
+
 Add future decisions here. Do not rewrite history; append revisions.

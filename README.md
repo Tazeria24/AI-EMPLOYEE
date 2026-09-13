@@ -79,6 +79,28 @@ To make email flows work, configure your Supabase project's Auth settings:
 - Add your site URL and `${SITE_URL}/auth/confirm` to the allowed redirect URLs.
 - Set `NEXT_PUBLIC_SITE_URL` in production (falls back to request headers in dev).
 
+## Database & multi-tenancy
+
+SQL migrations live in `supabase/migrations/`. `organization` is the tenant
+boundary: every business-owned table carries `organization_id` and is protected
+by Row Level Security (members read; owner/admin write). On signup a trigger
+provisions a profile, organization, owner membership and an empty business
+profile atomically, so a user is never without an organization.
+
+Apply migrations on a real Supabase project via the Supabase CLI or the SQL
+editor. Tenant-isolation tests can run against any PostgreSQL without the
+Supabase CLI:
+
+```bash
+# against a local Postgres database named "app", as a superuser role:
+psql -d app -f supabase/tests/00_supabase_shim.sql      # local-only auth shim
+psql -d app -f supabase/migrations/0001_multi_tenancy.sql
+psql -d app -f supabase/tests/tenant_isolation.sql      # prints PASSED on success
+```
+
+On Supabase the shim is unnecessary — `auth.uid()` and the `authenticated`
+role already exist.
+
 ## Project structure
 
 ```
@@ -94,7 +116,9 @@ lib/                 Utilities and integrations
   site-url.ts        Resolve the site origin for email redirects
   supabase/          Browser, server and proxy Supabase clients
   auth/              Auth server actions + input validation
+  organizations/     Org/membership/business-profile service, actions, validation
 proxy.ts             Session refresh + route protection (Next 16 proxy)
+supabase/            SQL migrations and tenant-isolation tests
 docs/                Product, architecture, security specifications
 progress/            PROGRESS, DECISIONS (ADRs), TEST_RESULTS
 tasks/               Milestone task definitions (00–13)

@@ -16,13 +16,17 @@ Status: IN PROGRESS
 - **Milestone 01 — Authentication** (signup, login, logout, password reset,
   email verification, protected /dashboard, SSR sessions via @supabase/ssr;
   route protection in proxy + server-side guard)
+- **Milestone 02 — Multi-tenancy** (organizations, organization_members,
+  business_profiles, owner/admin/member roles, atomic org provisioning on
+  signup, onboarding flow, RLS policies; tenant-isolation tests passing on
+  real Postgres)
 
 ## Current milestone
-02 — Multi-tenancy (next)
+03 — Products (next)
 
 ## Next action
-Read tasks/02-multi-tenancy.md. Implement organizations, organization_members,
-business_profiles, roles, onboarding, RLS policies and tenant-isolation tests.
+Read tasks/03-products.md. Implement product categories, product CRUD,
+price/currency/SKU/stock/status, search/filter, organization scoping + RLS.
 
 ## Rule
 Update this file after every completed milestone.
