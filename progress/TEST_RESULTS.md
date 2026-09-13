@@ -241,3 +241,60 @@ Treat Milestone 05 as implementation-complete and evaluation-pending.
   - hard cap of 4 tool iterations per turn bounds spend per customer turn
   - Voyage error bodies are never surfaced to callers (they can echo content)
   - `npm test` runs with no API key and makes no network calls
+
+---
+
+## Milestone 06 — Conversations
+- date: 2026-09-13
+- commit: (this commit)
+- tests: `npm test` — 90 passed / 90 (Vitest), up from 81. Added the
+  conversation state machine suite (9 cases: legal/illegal transitions, who may
+  post in each state, status labels)
+- typecheck: `npm run typecheck` — pass
+- lint: `npm run lint` — pass
+- build: `npm run build` — pass (adds /dashboard/conversations and
+  /dashboard/conversations/[id]; 18 routes + Proxy)
+- migrations: 0001–0006 apply cleanly on PostgreSQL 16 + pgvector. 0006 also
+  closes the leads.conversation_id foreign key deferred in 0005 (ADR-041), and
+  guards the supabase_realtime publication so plain PostgreSQL still applies it.
+- isolation suites: **all five PASSED**, psql exit 0 — tenant, products,
+  knowledge, agent, and the new conversations suite. No regressions.
+
+### The human-takeover race (audit finding #12) — closed and proved
+Sequential gate (`conversations_isolation.sql`):
+  - AI_ACTIVE → append_ai_message inserts (returns an id)
+  - human takes over → append_ai_message returns NULL, writes nothing, and the
+    discarded text exists nowhere in the table
+  - CLOSED → also refused
+  - handed back to AI_ACTIVE → posts again
+  - unknown conversation id → returns NULL rather than erroring
+  - append_ai_message against another organization's conversation → NULL
+
+**Genuine two-connection concurrency test** (the part a sequential test cannot
+prove). Session A opened a transaction, set status='HUMAN_ACTIVE' and held the
+row lock without committing; Session B then called append_ai_message:
+  - Session B **blocked for 1603 ms** on `select ... for update`
+  - after A committed, B observed HUMAN_ACTIVE, returned NULL
+  - messages written to that conversation: **0**
+  - final status: HUMAN_ACTIVE
+An application-level status check would have read AI_ACTIVE before A committed
+and posted the reply anyway. This is why the check and the insert live in one
+locked function rather than in the app.
+
+- manual QA (`npm start`, dummy env):
+    - /dashboard/conversations unauthenticated → 307 → /login?redirect=...
+    - /dashboard/conversations/[id] unauthenticated → 307 → /login
+- security checks:
+  - conversations/messages RLS: members read, owner/admin write; no anon
+  - append_ai_message is SECURITY INVOKER, so RLS gates it exactly like a
+    direct query (verified: it refuses another org's conversation)
+  - human replies are rejected unless the conversation is HUMAN_ACTIVE, both in
+    the pure state machine and before the insert
+  - customer text from history is re-wrapped as untrusted before reaching the
+    model, same as a fresh message
+  - a discarded AI reply is logged to agent_runs as blocked_reason='taken_over'
+    and surfaced in the UI rather than silently dropped
+- not verified here: real AI replies inside a thread still need
+  ANTHROPIC_API_KEY / VOYAGE_API_KEY / a Supabase project, as in M05. Realtime
+  delivery itself is likewise unverified (no Supabase project); the 15s poll is
+  the reason the inbox still works without it.

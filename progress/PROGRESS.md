@@ -37,8 +37,14 @@ Status: IN PROGRESS
   deterministic grounding guardrail, manual tool loop with an iteration cap,
   agent_runs logging, assistant playground, 105-case eval suite
 
+- **Milestone 06 — Conversations** (conversations + messages with RLS, the
+  AI_ACTIVE/HUMAN_ACTIVE/CLOSED state machine, human takeover/release/close,
+  inbox with search + filter, message thread, realtime + polling refresh,
+  conversation-aware agent replies; takeover race fixed in the database and
+  proved with two concurrent connections)
+
 ## Current milestone
-05 — AI Agent (implementation complete; live evaluation NOT yet run)
+06 — Conversations (complete); Milestone 05's live evaluation still outstanding
 
 ## Next action
 Milestone 05 is built and verified deterministically, but its acceptance
@@ -50,8 +56,11 @@ met yet: no live model run has happened. To close it out:
 3. Wire evals/run.mjs to that org (currently it estimates cost and stops), then
    run `npm run eval` (~$2.05 for 105 cases before caching) and record results
    in progress/TEST_RESULTS.md.
-Only after that should Milestone 05 be marked done and Milestone 06
-(Conversations) start.
+Milestone 06 is complete and did not need those credentials (its critical
+property, the takeover race, is proved in SQL). Milestone 05's live evaluation
+remains the outstanding item before the agent can be trusted with real
+customers. Next milestone: 07 — Leads (the leads/lead_events tables already
+exist from M05; M07 adds the pipeline UI, scoring and the activity timeline).
 
 ## Rule
 Update this file after every completed milestone.

@@ -6,10 +6,11 @@ answers questions, recommends products, captures and qualifies leads, follows
 up, escalates to humans and reports activity — using **verified business data
 only**.
 
-Implemented so far: **Milestones 00–05** — application foundation,
+Implemented so far: **Milestones 00–06** — application foundation,
 authentication, multi-tenancy with RLS, the product catalog, the knowledge base
-with pgvector retrieval, and the AI agent (implementation complete; live
-evaluation still pending — see `progress/PROGRESS.md`). See `docs/` for specifications and `progress/`
+with pgvector retrieval, the AI agent (implementation complete; live evaluation
+still pending — see `progress/PROGRESS.md`), and the conversation inbox with
+human takeover. See `docs/` for specifications and `progress/`
 for status, test results and decisions.
 
 ## Tech stack
@@ -102,10 +103,12 @@ psql -d app -f supabase/migrations/0002_products.sql
 psql -d app -f supabase/migrations/0003_knowledge.sql   # needs the pgvector extension
 psql -d app -f supabase/migrations/0004_embeddings_voyage.sql
 psql -d app -f supabase/migrations/0005_agent.sql
+psql -d app -f supabase/migrations/0006_conversations.sql
 psql -d app -f supabase/tests/tenant_isolation.sql      # prints PASSED on success
 psql -d app -f supabase/tests/products_isolation.sql    # prints PASSED on success
 psql -d app -f supabase/tests/knowledge_isolation.sql   # prints PASSED on success
 psql -d app -f supabase/tests/agent_isolation.sql       # prints PASSED on success
+psql -d app -f supabase/tests/conversations_isolation.sql
 ```
 
 On Supabase the shim is unnecessary — `auth.uid()` and the `authenticated`
@@ -143,6 +146,11 @@ Its safety properties are structural, not just prompted:
   stock figures in it are matched against that turn's tool results. Anything
   unverified blocks the reply and escalates to a human instead.
 - **Spend is bounded**: a hard cap on tool iterations per customer turn.
+- **Human takeover always wins.** AI replies are written through
+  `append_ai_message()`, which re-checks the conversation state under a row
+  lock. If someone took over while the model was still thinking, the reply is
+  discarded rather than posted — so a customer never sees the AI and a person
+  answering at once.
 
 ```bash
 npm test          # deterministic suite — no API key, no network, no cost
@@ -170,6 +178,7 @@ lib/                 Utilities and integrations
   organizations/     Org/membership/business-profile service, actions, validation
   products/          Product/category service, actions, validation, types
   knowledge/         Knowledge documents, chunking, indexing, retrieval
+  conversations/     Inbox service, actions and the AI/human state machine
   leads/             Customer + lead capture service and validation
   ai/provider/       Chat + embedding provider abstractions (Anthropic, Voyage, stub)
   ai/prompts/        System prompt construction

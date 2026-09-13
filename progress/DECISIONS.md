@@ -154,4 +154,20 @@ Reason: CLAUDE.md's "never invent price/stock" cannot be enforced by prompting a
 Decision: guardrails, tool dispatch, the iteration cap and grounding are tested deterministically in `npm test` (no API key, no cost). The 105 live conversations across the 15 docs/AI_AGENT.md categories live in `evals/` behind `npm run eval`, which prints a cost estimate and requires explicit confirmation.
 Reason: resolves the audit's "~15 categories vs 100 conversations" contradiction — both numbers are now real and serve different purposes. Keeps CI free, fast and deterministic while making the expensive, non-deterministic evaluation a conscious, budgeted act.
 
+## ADR-038 — Takeover race fixed in the database, not the application (accepted)
+Decision: AI replies are written through `append_ai_message(conversation_id, content, metadata)`, a SECURITY INVOKER function that takes `select ... for update` on the conversation row, and returns NULL without inserting unless the status is still `AI_ACTIVE`. Human takeover is a plain UPDATE on the same row, so the two are serialized by the row lock.
+Reason: closes audit finding #12. Checking the status in application code before inserting is a genuine race — a human can take over between the check and the insert, and the customer then sees the AI and a person answering at once. Verified with two concurrent connections: with an uncommitted takeover holding the lock, `append_ai_message` blocked for ~1.6s, then observed HUMAN_ACTIVE, returned NULL and wrote nothing.
+
+## ADR-039 — A discarded AI reply is recorded, never silent (accepted)
+Decision: when `append_ai_message` refuses, the reply is dropped and the run is logged to `agent_runs` with `blocked_reason = 'taken_over'` and `status = 'blocked'`; the UI tells the operator it happened.
+Reason: silently swallowing a generated reply hides both cost and behaviour. Making the refusal observable means a spike in takeover collisions is diagnosable rather than invisible.
+
+## ADR-040 — Realtime via Supabase, with a polling fallback (accepted)
+Decision: the conversation view subscribes to Supabase Realtime `postgres_changes` on `messages`, and also polls every 15s. Migration 0006 adds the tables to the `supabase_realtime` publication inside a `pg_publication` existence guard.
+Reason: realtime is part of the already-chosen Supabase stack, so it adds no vendor. The guard keeps migrations applicable to plain PostgreSQL, which is what the local isolation suites run on; the poll means the inbox still updates if realtime is not enabled or the socket drops. Both paths only trigger a re-render — message data still comes through RLS-scoped queries.
+
+## ADR-041 — leads.conversation_id foreign key closed (accepted, completes ADR-034)
+Decision: migration 0006 adds the foreign key from `leads.conversation_id` to `conversations(id) on delete set null`.
+Reason: ADR-034 left the column unconstrained only because `conversations` did not exist yet. With the table created, the deferred integrity gap is closed as planned.
+
 Add future decisions here. Do not rewrite history; append revisions.

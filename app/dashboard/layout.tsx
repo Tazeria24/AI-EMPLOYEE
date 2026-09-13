@@ -27,6 +27,12 @@ export default async function DashboardLayout({
               AI Sales Employee
             </Link>
             <Link
+              href="/dashboard/conversations"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Conversations
+            </Link>
+            <Link
               href="/dashboard/products"
               className="text-sm text-muted-foreground hover:text-foreground"
             >
