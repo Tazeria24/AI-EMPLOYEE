@@ -136,3 +136,50 @@ For every milestone record:
   - search via ILIKE on name/sku (full-text deferred)
   - SKU unique per organization (partial unique index; 23505 surfaced as a
     friendly "SKU already exists" message)
+
+---
+
+## Milestone 04 — Knowledge Base
+- date: 2026-09-13
+- commit: (this commit)
+- tests: `npm test` — 53 passed / 53 (Vitest): added chunking (7),
+  stub embedder + provider resolution (8), knowledge validation (6)
+- typecheck: `npm run typecheck` — pass
+- lint: `npm run lint` — pass
+- build: `npm run build` — pass (adds /dashboard/knowledge, .../new;
+  15 routes + Proxy)
+- migrations: 0001 + 0002 + 0003 apply cleanly on PostgreSQL 16 with
+  pgvector 0.6.0 (HNSW index on vector(1536), cosine ops)
+- knowledge isolation (RLS + retrieval): **passed on real PostgreSQL**.
+  supabase/tests/knowledge_isolation.sql, acting as user A:
+    - sees only own document/chunk; 0 rows for org B
+    - retrieval in own org returns 1 row (positive control — not vacuous)
+    - **CRITICAL: match_knowledge_chunks(orgB_id, <exact-match vector for org
+      B's chunk>) returns 0 rows** — the RPC is SECURITY INVOKER so RLS gates
+      it; a foreign org id leaks nothing
+    - no returned content contained org B's text
+    - chunk insert into org B blocked (insufficient_privilege); document
+      update on org B affected 0 rows; org B data intact afterwards
+  Result: "KNOWLEDGE ISOLATION TESTS PASSED", psql exit 0.
+  M02 + M03 suites re-run alongside: still PASSED (no regression).
+- end-to-end retrieval ranking (real stub embeddings → pgvector):
+  seeded two documents via the actual chunker + stub embedder, serialized with
+  the same JSON.stringify path used by processing.ts, then queried
+  "how long does delivery take in Lagos":
+    delivery chunk similarity 0.3299 (rank 1) vs sizing chunk 0.0917 (rank 2).
+  Confirms vector serialization round-trips and ranking is correct.
+- manual QA (`npm start`, dummy env):
+    - /dashboard/knowledge unauthenticated → 307 → /login?redirect=...
+    - /dashboard/knowledge/new unauthenticated → 307 → /login
+- security checks:
+  - retrieval RPC is SECURITY INVOKER; organization id is a scoping hint, never
+    the authorization boundary (RLS is) — verified by the cross-tenant test
+  - organizationId always derived server-side from the session, never client input
+  - knowledge tables: members read, owner/admin write; anon no access
+  - stub embedder runs locally: no network calls, no third-party data sharing,
+    no spend while the provider decision (ADR-008/009) is open
+- notes / limits:
+  - the stub embedder is lexical (hashing vectorizer), NOT semantic — it
+    exercises the full pipeline but must be replaced before production
+  - indexing runs synchronously in the request (ADR-030); large documents will
+    need a background job before beta

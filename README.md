@@ -6,9 +6,10 @@ answers questions, recommends products, captures and qualifies leads, follows
 up, escalates to humans and reports activity — using **verified business data
 only**.
 
-This repository currently contains **Milestone 00 — Foundation**: the
-application shell. See `docs/` for specifications and `progress/` for status
-and decisions.
+Implemented so far: **Milestones 00–04** — application foundation,
+authentication, multi-tenancy with RLS, the product catalog, and the knowledge
+base with pgvector retrieval. See `docs/` for specifications and `progress/`
+for status, test results and decisions.
 
 ## Tech stack
 
@@ -96,12 +97,29 @@ Supabase CLI:
 psql -d app -f supabase/tests/00_supabase_shim.sql      # local-only auth shim
 psql -d app -f supabase/migrations/0001_multi_tenancy.sql
 psql -d app -f supabase/migrations/0002_products.sql
+psql -d app -f supabase/migrations/0003_knowledge.sql   # needs the pgvector extension
 psql -d app -f supabase/tests/tenant_isolation.sql      # prints PASSED on success
 psql -d app -f supabase/tests/products_isolation.sql    # prints PASSED on success
+psql -d app -f supabase/tests/knowledge_isolation.sql   # prints PASSED on success
 ```
 
 On Supabase the shim is unnecessary — `auth.uid()` and the `authenticated`
 role already exist.
+
+## Knowledge base & embeddings
+
+Knowledge documents (FAQs, policies, documents) are chunked, embedded and
+stored in `knowledge_chunks` as pgvector `vector(1536)` values with an HNSW
+cosine index. Retrieval goes through the `match_knowledge_chunks` RPC, which is
+`SECURITY INVOKER` so RLS — not the passed organization id — is the
+authorization boundary.
+
+Embeddings go through a provider abstraction (`lib/ai/provider`). Until a
+production model is chosen, `EMBEDDING_PROVIDER=stub` uses a deterministic
+local embedder: no network calls, no cost, reproducible tests. **The stub is
+lexical, not semantic — replace it before production.** A real provider must
+emit 1536-dimension vectors, or the schema needs a migration and a full
+re-embed.
 
 ## Project structure
 
@@ -120,6 +138,8 @@ lib/                 Utilities and integrations
   auth/              Auth server actions + input validation
   organizations/     Org/membership/business-profile service, actions, validation
   products/          Product/category service, actions, validation, types
+  knowledge/         Knowledge documents, chunking, indexing, retrieval
+  ai/provider/       Embedding provider abstraction (stub embedder for now)
 proxy.ts             Session refresh + route protection (Next 16 proxy)
 supabase/            SQL migrations and tenant-isolation tests
 docs/                Product, architecture, security specifications

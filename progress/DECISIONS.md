@@ -110,4 +110,24 @@ Reason: simplest solution that meets the catalog-size needs of the ICP; can add 
 Decision: `sku` is optional but unique within an organization (partial unique index where sku is not null); the duplicate-key error surfaces as a friendly message.
 Reason: SKUs identify stock within a business and must not collide there, while remaining optional and not globally unique across tenants.
 
+## ADR-029 — Embedding provider abstraction with a stub default; dimensions pinned at 1536 (accepted)
+Decision: embeddings go through `EmbeddingProvider` (lib/ai/provider). Until ADR-008/ADR-009 are confirmed, the default is a deterministic local stub (a hashing vectorizer, L2-normalized) selected by `EMBEDDING_PROVIDER=stub`. The DB column is `vector(1536)`.
+Reason: unblocks Milestone 04 without committing to a paid provider, incurring spend, or sending business data to a third party, while exercising chunking, storage, pgvector retrieval and ranking end to end. Consequence: the stub is lexical, not semantic, and must not be used in production; a real provider must emit 1536-dim vectors or the schema needs a migration plus a full re-embed.
+
+## ADR-030 — Synchronous indexing for MVP (accepted)
+Decision: chunking + embedding run inline when a document is saved or reindexed; status is tracked on the document (`pending`/`processing`/`ready`/`error`) with the error text stored for display, and reindexing is idempotent (chunks are replaced).
+Reason: simplest thing that satisfies "processing status/error handling" and keeps failures visible and recoverable. Move to a queue/Vercel Cron job when documents get large enough to exceed request limits.
+
+## ADR-031 — Retrieval RPC is SECURITY INVOKER; RLS is the boundary (accepted)
+Decision: `match_knowledge_chunks(organization_id, query_embedding, match_count)` is SECURITY INVOKER. The organization id is a scoping/index hint only; RLS on `knowledge_chunks` is the authorization boundary, and the app always passes a server-derived organization id.
+Reason: directly answers the top risk from the planning audit (cross-tenant RAG leakage). Verified by test: calling the RPC with another organization's id and an exact-match query vector for that organization's chunk returns zero rows. A SECURITY DEFINER function here would have leaked.
+
+## ADR-032 — Paragraph-first chunking with overlap only on hard splits (accepted)
+Decision: `chunkText` packs paragraphs up to 1000 characters and only hard-splits paragraphs that exceed the limit, applying 150 characters of overlap on those splits.
+Reason: paragraph boundaries are already semantically clean, so overlap there adds duplication without benefit; overlap is applied exactly where a fact could be cut in half.
+
+## ADR-033 — knowledge_documents.error column (accepted, extends DATABASE.md)
+Decision: add an `error text` column to `knowledge_documents` beyond the fields listed in docs/DATABASE.md.
+Reason: task 04 requires failures to be "visible and recoverable"; storing the last error on the row lets the UI show why indexing failed and offer a reindex.
+
 Add future decisions here. Do not rewrite history; append revisions.
