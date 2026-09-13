@@ -95,7 +95,9 @@ Supabase CLI:
 # against a local Postgres database named "app", as a superuser role:
 psql -d app -f supabase/tests/00_supabase_shim.sql      # local-only auth shim
 psql -d app -f supabase/migrations/0001_multi_tenancy.sql
+psql -d app -f supabase/migrations/0002_products.sql
 psql -d app -f supabase/tests/tenant_isolation.sql      # prints PASSED on success
+psql -d app -f supabase/tests/products_isolation.sql    # prints PASSED on success
 ```
 
 On Supabase the shim is unnecessary — `auth.uid()` and the `authenticated`
@@ -117,6 +119,7 @@ lib/                 Utilities and integrations
   supabase/          Browser, server and proxy Supabase clients
   auth/              Auth server actions + input validation
   organizations/     Org/membership/business-profile service, actions, validation
+  products/          Product/category service, actions, validation, types
 proxy.ts             Session refresh + route protection (Next 16 proxy)
 supabase/            SQL migrations and tenant-isolation tests
 docs/                Product, architecture, security specifications

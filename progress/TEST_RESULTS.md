@@ -103,3 +103,36 @@ For every milestone record:
   - first RLS test draft used psql var interpolation inside dollar-quoted DO
     blocks and confused org ids with user ids → rewrote to pass org ids via
     transaction-local GUCs (set_config), which any role can read
+
+---
+
+## Milestone 03 — Products
+- date: 2026-09-13
+- commit: (this commit)
+- tests: `npm test` — 32 passed / 32 (Vitest): added product/category
+  validation suite (parseProduct, parseCategory — 9 cases)
+- typecheck: `npm run typecheck` — pass
+- lint: `npm run lint` — pass
+- build: `npm run build` — pass (adds /dashboard/products, .../new,
+  .../[id]/edit; 13 routes + Proxy)
+- products isolation (RLS): **passed on real PostgreSQL 16**. Applied shim +
+  0001 + 0002, ran supabase/tests/products_isolation.sql as user A:
+    - sees only own products; cannot see org B's
+    - can create in own org; cannot update/delete org B's (0 rows)
+    - product insert into org B blocked (insufficient_privilege)
+    - confirmed org B product untouched
+  Result: "PRODUCTS ISOLATION TESTS PASSED", psql exit 0.
+  M02 tenant_isolation.sql re-run alongside: still PASSED (no regression).
+- manual QA (`npm start`, dummy env):
+    - /dashboard/products unauthenticated → 307 → /login?redirect=/dashboard/products
+    - /dashboard/products/new unauthenticated → 307 → /login
+- security checks:
+  - products/categories RLS: members read, owner/admin write; anon no access
+  - actions guard canManageOrg before writing; writes scoped to ctx.organizationId
+  - search input has LIKE wildcards escaped before ILIKE
+  - members (non-admin) get a read-only list (no New/Edit/Archive controls)
+- notes:
+  - "archive" implemented as soft delete via status='archived'
+  - search via ILIKE on name/sku (full-text deferred)
+  - SKU unique per organization (partial unique index; 23505 surfaced as a
+    friendly "SKU already exists" message)

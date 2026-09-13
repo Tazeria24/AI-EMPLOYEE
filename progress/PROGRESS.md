@@ -20,13 +20,19 @@ Status: IN PROGRESS
   business_profiles, owner/admin/member roles, atomic org provisioning on
   signup, onboarding flow, RLS policies; tenant-isolation tests passing on
   real Postgres)
+- **Milestone 03 — Products** (product_categories + products with RLS,
+  price/currency/SKU/stock/status, search + status filter, CRUD + archive,
+  dashboard UI with loading/empty/error states; products isolation tests
+  passing on real Postgres)
 
 ## Current milestone
-03 — Products (next)
+04 — Knowledge Base (next)
 
 ## Next action
-Read tasks/03-products.md. Implement product categories, product CRUD,
-price/currency/SKU/stock/status, search/filter, organization scoping + RLS.
+Read tasks/04-knowledge-base.md. Implement FAQs/policies/documents, chunking,
+embeddings, pgvector retrieval, org-scoped retrieval + processing status.
+NOTE: this milestone needs the embedding model/provider decision (ADR-009,
+still PROPOSED) confirmed before the schema/migration is finalized.
 
 ## Rule
 Update this file after every completed milestone.

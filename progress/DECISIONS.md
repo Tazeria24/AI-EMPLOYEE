@@ -98,4 +98,16 @@ Reason: least privilege for the dashboard surface; public/widget access (later m
 Decision: SQL migrations live in `supabase/migrations/`. Because CI has no Supabase CLI, tenant-isolation tests run as a plain-SQL script (`supabase/tests/tenant_isolation.sql`) against any PostgreSQL, using a small local-only auth shim (`supabase/tests/00_supabase_shim.sql`) that emulates `auth.uid()` and the Supabase roles.
 Reason: keeps migrations reproducible and lets the critical isolation tests run without external infrastructure; on real Supabase the shim is unnecessary.
 
+## ADR-026 — Archive products via status (soft delete) (accepted)
+Decision: products are archived by setting `status='archived'` rather than being hard-deleted; the catalog defaults to showing active products.
+Reason: task 03 requires "archive"; products are referenced by future leads/conversations/recommendations, so preserving them (DATABASE.md "soft deletion where justified") avoids dangling references and keeps history.
+
+## ADR-027 — Product search via ILIKE for MVP (accepted)
+Decision: product search matches name/sku with `ILIKE` (wildcards in user input escaped), backed by btree indexes; full-text / trigram search is deferred.
+Reason: simplest solution that meets the catalog-size needs of the ICP; can add `pg_trgm` or tsvector later without changing the API.
+
+## ADR-028 — SKU unique per organization (accepted)
+Decision: `sku` is optional but unique within an organization (partial unique index where sku is not null); the duplicate-key error surfaces as a friendly message.
+Reason: SKUs identify stock within a business and must not collide there, while remaining optional and not globally unique across tenants.
+
 Add future decisions here. Do not rewrite history; append revisions.
