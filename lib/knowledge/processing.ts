@@ -45,7 +45,7 @@ export async function processDocument(
     }
 
     const provider = getEmbeddingProvider();
-    const embeddings = await provider.embed(chunks);
+    const embeddings = await provider.embed(chunks, "document");
     if (embeddings.length !== chunks.length) {
       throw new Error("Embedding provider returned an unexpected batch size.");
     }

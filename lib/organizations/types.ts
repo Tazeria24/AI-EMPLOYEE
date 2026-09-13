@@ -14,6 +14,7 @@ export interface BusinessProfile {
   phone: string | null;
   location: string | null;
   description: string | null;
+  business_hours: unknown | null;
   currency: string;
   timezone: string;
 }

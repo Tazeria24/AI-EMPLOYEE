@@ -57,7 +57,7 @@ export async function searchKnowledge(
   if (trimmedQuery.length === 0) return [];
 
   const provider = getEmbeddingProvider();
-  const [queryEmbedding] = await provider.embed([trimmedQuery]);
+  const [queryEmbedding] = await provider.embed([trimmedQuery], "query");
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("match_knowledge_chunks", {

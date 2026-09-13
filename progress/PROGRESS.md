@@ -31,18 +31,27 @@ Status: IN PROGRESS
   error/reindex, knowledge UI with retrieval test box; knowledge isolation
   tests passing on real Postgres incl. cross-tenant retrieval)
 
+- **Milestone 05 — AI Agent** (PARTIAL — see below): Claude Sonnet 5 behind a
+  ChatProvider abstraction, Voyage `voyage-4` embeddings (1024d), system prompt,
+  5 MVP tools bound to the server-derived org, untrusted-content wrapping,
+  deterministic grounding guardrail, manual tool loop with an iteration cap,
+  agent_runs logging, assistant playground, 105-case eval suite
+
 ## Current milestone
-05 — AI Agent (next)
+05 — AI Agent (implementation complete; live evaluation NOT yet run)
 
 ## Next action
-Read tasks/05-ai-agent.md. Implement the provider abstraction for chat, system
-prompt, RAG context, tools (search_products, search_knowledge,
-get_business_hours, create_lead, escalate_to_human per ADR-007), response
-validation, logging and the evaluation suite.
-BLOCKER: Milestone 05 needs a real model provider (ADR-008, still PROPOSED)
-confirmed by the founder. Embeddings currently run on the local stub
-(ADR-029); a production embedding model (ADR-009) must emit 1536-dim vectors
-or the knowledge schema needs a migration + re-embed.
+Milestone 05 is built and verified deterministically, but its acceptance
+criterion ("at least 100 representative conversations are evaluated") is NOT
+met yet: no live model run has happened. To close it out:
+1. Provide ANTHROPIC_API_KEY and VOYAGE_API_KEY, and set EMBEDDING_PROVIDER=voyage.
+2. Create a Supabase project, apply migrations 0001–0005, seed a demo business
+   with products + knowledge.
+3. Wire evals/run.mjs to that org (currently it estimates cost and stops), then
+   run `npm run eval` (~$2.05 for 105 cases before caching) and record results
+   in progress/TEST_RESULTS.md.
+Only after that should Milestone 05 be marked done and Milestone 06
+(Conversations) start.
 
 ## Rule
 Update this file after every completed milestone.

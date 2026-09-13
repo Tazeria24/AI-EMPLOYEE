@@ -130,4 +130,28 @@ Reason: paragraph boundaries are already semantically clean, so overlap there ad
 Decision: add an `error text` column to `knowledge_documents` beyond the fields listed in docs/DATABASE.md.
 Reason: task 04 requires failures to be "visible and recoverable"; storing the last error on the row lets the UI show why indexing failed and offer a reindex.
 
+## ADR-008a — AI provider/model DECIDED: Claude Sonnet 5 (accepted; supersedes ADR-008's proposed status)
+Decision: the agent runs on Anthropic `claude-sonnet-5` behind the `ChatProvider` interface, with adaptive thinking, `strict: true` tools, and prompt caching on the stable system prefix.
+Reason: founder decision on unit economics. At ~15 turns with RAG context a conversation costs roughly $0.17 on Sonnet 5 versus ~$0.42 on Opus 5; against a ₦15,000/month Starter tier that difference decides whether the plan is profitable. Sonnet 5 retains strong tool use and instruction-following, which is what the grounding rules depend on. Revisit if eval results show grounding or escalation quality falling short.
+
+## ADR-009a — Embeddings DECIDED: Voyage AI `voyage-4`, 1024 dims (accepted; supersedes ADR-009's proposed status)
+Decision: embeddings come from Voyage AI `voyage-4` (1024 dimensions) via `EMBEDDING_PROVIDER=voyage`; the stub remains for tests and offline development.
+Reason: verified against Anthropic's documentation that Anthropic offers no first-party embedding model and recommends Voyage. Consequence the founder accepted: Voyage is a **second vendor** with its own `VOYAGE_API_KEY`. Migration 0004 changes the column from vector(1536) to vector(1024) and clears chunks for re-indexing — done now precisely because there is no production data. Voyage vectors are unit-normalized, so the existing cosine index and retrieval RPC are otherwise unchanged.
+
+## ADR-034 — Pull customers/leads/lead_events forward into Milestone 05 (accepted)
+Decision: create `customers`, `leads` and `lead_events` (per docs/DATABASE.md) in migration 0005, ahead of their Milestones 06/07, and add `agent_runs` for the tasks/05 logging requirement.
+Reason: tasks/05 requires a `create_lead` tool, and a tool with nowhere to write would have to discard or invent data — the same defect the audit caught with `check_order`. `leads.conversation_id` is an unconstrained uuid until M06 adds the conversations table and its foreign key.
+
+## ADR-035 — Manual tool loop rather than an SDK tool-runner (accepted)
+Decision: `lib/ai/agent/run.ts` implements the request → tool → loop cycle directly, with a hard cap of 4 tool iterations per customer turn.
+Reason: this agent's security properties depend on details the loop owns — binding every tool call to a server-derived organization id, capping spend, and logging each call. Keeping the loop explicit makes those auditable, and avoids depending on a beta SDK surface.
+
+## ADR-036 — Grounding enforced by a deterministic claim checker (accepted)
+Decision: before any reply reaches a customer, price and stock figures in the draft are extracted and matched against the tool results from that turn. Unmatched figures block the reply, which is replaced by a handoff message and the turn is marked escalated.
+Reason: CLAUDE.md's "never invent price/stock" cannot be enforced by prompting alone. The check is deliberately narrow — only price- and stock-shaped claims — so legitimate numbers quoted from knowledge ("2 working days") are not flagged. It is unit-testable without calling a model, so it runs free in CI.
+
+## ADR-037 — Two-layer evaluation: deterministic in CI, live opt-in (accepted)
+Decision: guardrails, tool dispatch, the iteration cap and grounding are tested deterministically in `npm test` (no API key, no cost). The 105 live conversations across the 15 docs/AI_AGENT.md categories live in `evals/` behind `npm run eval`, which prints a cost estimate and requires explicit confirmation.
+Reason: resolves the audit's "~15 categories vs 100 conversations" contradiction — both numbers are now real and serve different purposes. Keeps CI free, fast and deterministic while making the expensive, non-deterministic evaluation a conscious, budgeted act.
+
 Add future decisions here. Do not rewrite history; append revisions.

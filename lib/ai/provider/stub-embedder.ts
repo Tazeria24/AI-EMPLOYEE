@@ -1,15 +1,18 @@
-import type { EmbeddingProvider } from "./types";
+import type { EmbeddingInputType, EmbeddingProvider } from "./types";
 
 /**
- * Vector length used by the knowledge base. Pinned in the DB as vector(1536)
- * (ADR-029). A real provider must emit exactly this many dimensions, or the
- * schema must be migrated and all chunks re-embedded.
+ * Vector length used by the knowledge base. Pinned in the DB as vector(1024)
+ * to match Voyage `voyage-4` (ADR-009). A provider must emit exactly this many
+ * dimensions, or the schema must be migrated and all chunks re-embedded.
  */
-export const EMBEDDING_DIMENSIONS = 1536;
+export const EMBEDDING_DIMENSIONS = 1024;
 
 /**
- * Deterministic local embedder used until a paid provider is chosen
- * (ADR-008/ADR-009 are still open). It is a hashing vectorizer: tokens are
+ * Deterministic local embedder. Voyage `voyage-4` is the production provider
+ * (ADR-009); this one keeps tests and CI free, offline and reproducible, and
+ * serves as a fallback for local development without a Voyage key.
+ *
+ * It is a hashing vectorizer: tokens are
  * hashed into buckets and the vector is L2-normalized, so cosine similarity
  * reflects shared vocabulary. That is enough to exercise chunking, storage,
  * pgvector retrieval and ranking end to end without any network call — but it
@@ -49,7 +52,12 @@ export function embedText(
 export const stubEmbeddingProvider: EmbeddingProvider = {
   id: "stub",
   dimensions: EMBEDDING_DIMENSIONS,
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(
+    texts: string[],
+    // The stub is symmetric: queries and documents are embedded identically.
+    _inputType: EmbeddingInputType = "document",
+  ): Promise<number[][]> {
+    void _inputType;
     return texts.map((text) => embedText(text));
   },
 };

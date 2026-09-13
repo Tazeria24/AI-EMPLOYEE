@@ -183,3 +183,61 @@ For every milestone record:
     exercises the full pipeline but must be replaced before production
   - indexing runs synchronously in the request (ADR-030); large documents will
     need a background job before beta
+
+---
+
+## Milestone 05 — AI Agent (PARTIAL)
+- date: 2026-09-13
+- commit: (this commit)
+- tests: `npm test` — 81 passed / 81 (Vitest), up from 53. Added: grounding
+  guardrail (9), untrusted-content wrapping (4), lead capture validation (5),
+  agent loop with a scripted provider (9), embedding provider resolution (1)
+- typecheck: `npm run typecheck` — pass
+- lint: `npm run lint` — pass
+- build: `npm run build` — pass (adds /dashboard/assistant; 16 routes + Proxy)
+- migrations: 0001–0005 apply cleanly on PostgreSQL 16 + pgvector 0.6.0;
+  `knowledge_chunks.embedding` confirmed as `vector(1024)` after 0004
+- isolation suites: **all four PASSED on real PostgreSQL**, psql exit 0 —
+  tenant, products, knowledge (incl. cross-tenant retrieval), and the new
+  agent suite (customers/leads/lead_events/agent_runs). No regressions.
+  The agent suite proves a lead or agent_run cannot be written into another
+  organization even when the organization id passed in is a foreign one —
+  the shape a prompt-injection or a bug would take.
+- manual QA (`npm start`, dummy env):
+    - /dashboard/assistant unauthenticated → 307 → /login?redirect=...
+- agent-loop behaviour verified deterministically (scripted provider, no API):
+    - grounded reply after a tool call → allowed
+    - invented price after a tool call → BLOCKED, escalated, safe fallback
+    - price stated with no tool call at all → BLOCKED
+    - escalate_to_human → turn marked escalated
+    - model that never stops calling tools → stopped at the 4-iteration cap
+    - unknown tool name → handled, not thrown
+    - empty reply → blocked
+    - customer message is wrapped as <untrusted> before being sent
+    - token usage accumulates across iterations
+
+### NOT DONE — acceptance criterion not met
+tasks/05 requires "at least 100 representative conversations are evaluated".
+**No live model evaluation has been run.** This environment has no
+ANTHROPIC_API_KEY or VOYAGE_API_KEY, and no Supabase project, so:
+  - the 105 eval cases exist (`evals/cases.json`, 15 categories from
+    docs/AI_AGENT.md) and `npm run eval` prints a cost estimate (~$2.05 for
+    105 cases before prompt caching), but the runner stops before executing:
+    it still needs wiring to an authenticated org so the tools read a real
+    catalogue and knowledge base
+  - real model behaviour (grounding under pressure, injection resistance,
+    escalation judgement) is therefore UNVERIFIED
+  - real retrieval quality is UNVERIFIED: retrieval has only ever been
+    exercised with the lexical stub embedder, never with Voyage
+Treat Milestone 05 as implementation-complete and evaluation-pending.
+
+- security checks:
+  - every tool handler receives organizationId from the session, never from
+    model output; RLS enforces the same boundary independently (proved above)
+  - customer text and retrieved chunks are wrapped as untrusted data, with
+    delimiter-forgery neutralized (tested)
+  - price/stock claims are verified against tool results before a reply is
+    released; unverifiable claims escalate instead of going out (tested)
+  - hard cap of 4 tool iterations per turn bounds spend per customer turn
+  - Voyage error bodies are never surfaced to callers (they can echo content)
+  - `npm test` runs with no API key and makes no network calls

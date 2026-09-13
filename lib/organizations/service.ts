@@ -48,7 +48,7 @@ export async function getBusinessProfile(
   const { data } = await supabase
     .from("business_profiles")
     .select(
-      "organization_id, business_name, business_type, website, phone, location, description, currency, timezone",
+      "organization_id, business_name, business_type, website, phone, location, description, business_hours, currency, timezone",
     )
     .eq("organization_id", organizationId)
     .maybeSingle();

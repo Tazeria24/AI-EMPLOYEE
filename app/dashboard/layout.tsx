@@ -38,6 +38,12 @@ export default async function DashboardLayout({
             >
               Knowledge
             </Link>
+            <Link
+              href="/dashboard/assistant"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Assistant
+            </Link>
           </nav>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <span>{user.email}</span>

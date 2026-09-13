@@ -5,7 +5,7 @@
 -- match_knowledge_chunks cannot be abused, even when called with a FOREIGN
 -- organization id, because it is SECURITY INVOKER and RLS gates the rows.
 --
--- On plain PostgreSQL, apply 00_supabase_shim.sql and migrations 0001..0003
+-- On plain PostgreSQL, apply 00_supabase_shim.sql and migrations 0001..0004
 -- first. Run with ON_ERROR_STOP.
 
 \set ON_ERROR_STOP on
@@ -38,11 +38,11 @@ values
   (current_setting('test.org_a')::uuid,
    '00000000-0000-0000-0000-0000000000d1', 0,
    'Org A delivers within Lagos in two days.',
-   (select ('[' || '1' || repeat(',0', 1535) || ']')::vector)),
+   (select ('[' || '1' || repeat(',0', 1023) || ']')::vector)),
   (current_setting('test.org_b')::uuid,
    '00000000-0000-0000-0000-0000000000d2', 0,
    'Org B secret pricing for wholesale partners.',
-   (select ('[0,1' || repeat(',0', 1534) || ']')::vector));
+   (select ('[0,1' || repeat(',0', 1022) || ']')::vector));
 
 -- Sanity (privileged): both chunks exist.
 do $$
@@ -63,7 +63,7 @@ declare
   a_org uuid := current_setting('test.org_a')::uuid;
   b_org uuid := current_setting('test.org_b')::uuid;
   -- A query vector pointing at org B's chunk.
-  b_query vector := ('[0,1' || repeat(',0', 1534) || ']')::vector;
+  b_query vector := ('[0,1' || repeat(',0', 1022) || ']')::vector;
   leaked text;
 begin
   -- Reads: sees only own documents/chunks.

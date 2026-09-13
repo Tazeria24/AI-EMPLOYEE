@@ -43,7 +43,10 @@ describe("stub embedder", () => {
   });
 
   it("embeds a batch preserving order", async () => {
-    const [first, second] = await stubEmbeddingProvider.embed(["alpha", "beta"]);
+    const [first, second] = await stubEmbeddingProvider.embed(
+      ["alpha", "beta"],
+      "document",
+    );
     expect(first).toEqual(embedText("alpha"));
     expect(second).toEqual(embedText("beta"));
   });
@@ -52,6 +55,13 @@ describe("stub embedder", () => {
 describe("getEmbeddingProvider", () => {
   it("defaults to the stub provider", () => {
     expect(getEmbeddingProvider().id).toBe("stub");
+  });
+
+  it("resolves voyage when configured", () => {
+    const previous = process.env.EMBEDDING_PROVIDER;
+    process.env.EMBEDDING_PROVIDER = "voyage";
+    expect(getEmbeddingProvider().id).toBe("voyage-4");
+    process.env.EMBEDDING_PROVIDER = previous;
   });
 
   it("throws for an unsupported provider", () => {
