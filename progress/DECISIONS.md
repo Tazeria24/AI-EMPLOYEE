@@ -182,4 +182,28 @@ Reason: real sales move backwards and dead deals get revived, so a restrictive s
 Decision: `ToolContext` carries an optional `conversationId`, so `create_lead` attaches the conversation the agent is answering in; creating a lead by hand from a thread reuses that conversation's customer and refuses to create a second lead for the same conversation.
 Reason: the FK became usable once M06 created `conversations` (ADR-041). Linking lead and thread means the pipeline can show what was actually said, and prevents duplicate leads per conversation.
 
+## ADR-045 — The two-follow-up cap is a database constraint (accepted)
+Decision: `automation_runs.follow_up_number` is constrained to 1 or 2, `(lead_id, follow_up_number)` is uniquely indexed, and a run may only reach status `sent` if it carries a number.
+Reason: closes audit finding #11. An application-level "have we already sent two?" check is defeated by a scheduler retry, two overlapping cron firings, or a worker crashing mid-run. With these constraints a third follow-up has no valid number to use and a retry of #1 collides with the existing row, so spamming a customer is impossible regardless of application bugs. Verified: the database rejects a third insert, a duplicate #1, and a `sent` run with no number.
+
+## ADR-046 — Runs are claimed atomically before execution (accepted)
+Decision: `claim_automation_run(run_id)` is a conditional `update ... where status = 'scheduled' returning id`; the cron worker executes only runs it actually claimed.
+Reason: same lesson as ADR-038. Two overlapping cron firings would otherwise both execute the same scheduled run. Verified with two connections: with the first claim uncommitted, the second worker blocked ~1.6s and then received NULL, so exactly one executes.
+
+## ADR-047 — Quiet hours and opt-out are part of eligibility (accepted)
+Decision: follow-ups are never scheduled to send between 21:00 and 08:00 in the business's timezone (deferred to the next morning rather than dropped), `customers.marketing_opt_out` is filtered in the eligibility query, the opt-out is re-checked at send time, and won/lost leads are excluded.
+Reason: the rest of audit finding #11. The cap stops volume; these stop the other ways automated follow-up becomes spam. The rules live in a pure module (`lib/automations/eligibility.ts`) so they are exhaustively unit-tested without a database or a clock.
+
+## ADR-048 — Service-role client confined to the cron runner (accepted)
+Decision: `lib/supabase/admin.ts` provides a service-role client used only by the automations cron, which has no user session; every query it makes is explicitly filtered by `organization_id`.
+Reason: audit finding #7 warned that reaching for the service-role key silently removes the tenant boundary. Background jobs genuinely cannot use the request-scoped client, so the exception is narrow, documented at the call site, and compensated by writing the scoping out by hand — RLS is not there to catch a mistake in this path.
+
+## ADR-049 — Follow-up drafts go through the grounding guardrail (accepted)
+Decision: an AI-drafted follow-up is checked by `checkGrounding(message, "")` — with no tool evidence, any price or stock figure is unverified — and a failing draft is recorded as `failed` rather than delivered.
+Reason: a follow-up is still a message from the business. The same "never invent price/stock" rule applies, and with no tools called during drafting there is nothing to ground a number against.
+
+## ADR-050 — Delivery is abstracted; conversation delivery does not yet reach customers (accepted)
+Decision: `lib/delivery` defines a `DeliveryProvider` with `conversation` and `email` (Resend) implementations, selected per automation.
+Reason: the abstraction is what tasks/08 asks for. Recorded limitation: until the widget (M09) or WhatsApp (M10) exists, a conversation-delivered follow-up is stored and visible in the inbox but does **not** reach the customer — email is currently the only channel that actually leaves the building. Automations default to `conversation` and start disabled, so nothing is sent on a business's behalf until they opt in.
+
 Add future decisions here. Do not rewrite history; append revisions.

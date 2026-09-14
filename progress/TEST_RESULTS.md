@@ -339,3 +339,62 @@ locked function rather than in the app.
 - not verified here: AI-captured leads end-to-end still need a live model and
   Supabase project, as in M05/M06. The create_lead → conversation link is
   covered by typecheck and the isolation suite, not by a live run.
+
+---
+
+## Milestone 08 — Automations
+- date: 2026-09-14
+- commit: (this commit)
+- tests: `npm test` — 114 passed / 114 (Vitest), up from 99. Added the
+  eligibility suite (15 cases: inactivity window and its boundary, opt-out,
+  won/lost, follow-up numbering, never a third, unparseable timestamps,
+  quiet hours, timezone reading with a safe fallback, deferral to morning)
+- typecheck / lint: pass
+- build: `npm run build` — pass (adds /dashboard/automations and
+  /api/cron/automations; 22 routes + Proxy)
+- isolation suites: **all seven PASSED** on real PostgreSQL 16, psql exit 0.
+  No regressions.
+
+### The follow-up cap (audit finding #11) — enforced by the database
+`automations_isolation.sql` proves the constraints, not the application:
+  - follow-ups #1 and #2 insert normally
+  - a **third** follow-up is rejected (check_violation) — there is no valid
+    third number
+  - a **retry of #1** is rejected (unique_violation) — this is what makes a
+    scheduler retry safe
+  - a run marked `sent` with **no** follow-up number is rejected, closing the
+    loophole of dodging the cap with a null
+  - exactly 2 runs remain for the lead afterwards
+
+### Atomic run claiming — two-connection race
+Worker A claimed a scheduled run inside an uncommitted transaction; Worker B
+then called `claim_automation_run` on the same run:
+  - Worker A received the run id (claimed)
+  - Worker B **blocked 1608 ms**, then received **NULL**
+  - final status: `running` — exactly one worker executes
+This is the overlapping-cron-firing scenario, which an application-level
+"is it still scheduled?" check would not survive.
+
+- manual QA (`npm start`, dummy env):
+    - POST /api/cron/automations with no secret → **401**
+    - POST with a wrong secret → **401**, body `{"error":"unauthorized"}`
+      (does not reveal whether the secret is unset or merely wrong)
+    - GET /api/cron/automations → 405
+    - /dashboard/automations unauthenticated → 307 → /login?redirect=...
+- security checks:
+  - cron secret compared with `timingSafeEqual`, after a length check
+  - the cron path uses the service-role client (no user session exists), so
+    RLS does not apply there — every query is explicitly filtered by
+    organization_id, including the lead lookup inside executeRun
+  - automations are created **disabled**; nothing is sent on a business's
+    behalf until they turn it on
+  - opt-out is re-checked at send time, not only when scheduling
+  - AI-drafted follow-ups pass through the grounding guardrail: with no tools
+    called there is no evidence, so any price/stock figure fails the draft
+  - per-invocation cap of 25 runs bounds the work one firing can do
+- not verified here: AI-drafted follow-up text and real email delivery need
+  ANTHROPIC_API_KEY / RESEND_API_KEY and a Supabase project, as in M05–M07.
+- known limitation (ADR-050): conversation-delivered follow-ups are recorded
+  but do NOT reach the customer until the widget (M09) or WhatsApp (M10)
+  exists. Email is currently the only channel that actually leaves the
+  building.

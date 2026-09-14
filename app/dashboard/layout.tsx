@@ -51,6 +51,12 @@ export default async function DashboardLayout({
               Knowledge
             </Link>
             <Link
+              href="/dashboard/automations"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Automations
+            </Link>
+            <Link
               href="/dashboard/assistant"
               className="text-sm text-muted-foreground hover:text-foreground"
             >

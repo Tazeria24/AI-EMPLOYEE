@@ -48,8 +48,15 @@ Status: IN PROGRESS
   activity timeline from lead_events, conversation-to-lead creation, AI-captured
   leads linked to their conversation)
 
+- **Milestone 08 — Automations** (automations + automation_runs, inactive-lead
+  trigger, AI-drafted follow-ups through the grounding guardrail, delivery
+  abstraction (conversation + Resend email), Vercel Cron endpoint with a
+  constant-time secret check, quiet hours + opt-out; the two-follow-up cap and
+  run de-duplication enforced by database constraints, and atomic run claiming
+  proved with two concurrent connections)
+
 ## Current milestone
-07 — Leads (complete); Milestone 05's live evaluation still outstanding
+08 — Automations (complete); Milestone 05's live evaluation still outstanding
 
 ## Next action
 Milestone 05 is built and verified deterministically, but its acceptance
@@ -64,10 +71,12 @@ met yet: no live model run has happened. To close it out:
 Milestone 06 is complete and did not need those credentials (its critical
 property, the takeover race, is proved in SQL). Milestone 05's live evaluation
 remains the outstanding item before the agent can be trusted with real
-customers. Next milestone: 08 — Automations (scheduler, inactive-lead trigger,
-AI-generated follow-ups, max-two-follow-up rule, idempotency). Note the audit's
-finding #11: the two-follow-up limit and de-duplication must be enforced in the
-data layer, not just in application logic.
+customers. Next milestone: 09 — Website Widget. Note two things it must carry:
+audit finding #10 (a public widget endpoint calling a paid LLM is a
+cost-amplification vector — per-org budget with a hard cutoff, rate limits and
+a max messages/session are required, per ADR-011), and that the widget is what
+finally makes conversation-delivered follow-ups actually reach customers
+(ADR-050).
 
 ## Rule
 Update this file after every completed milestone.
