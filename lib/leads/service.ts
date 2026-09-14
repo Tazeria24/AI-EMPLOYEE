@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type { Lead, LeadEvent, LeadStatus, LeadWithCustomer } from "./types";
 import type { LeadCaptureValues } from "./validation";
@@ -19,8 +20,9 @@ export async function recordLeadEvent(
   leadId: string,
   eventType: string,
   metadata: Record<string, unknown> = {},
+  client?: SupabaseClient,
 ): Promise<void> {
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
   await supabase.from("lead_events").insert({
     organization_id: organizationId,
     lead_id: leadId,
@@ -39,8 +41,9 @@ export async function captureLead(
   values: LeadCaptureValues,
   source: string,
   conversationId: string | null = null,
+  client?: SupabaseClient,
 ): Promise<{ ok: true; leadId: string } | { ok: false; error: string }> {
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
 
   const { data: customer, error: customerError } = await supabase
     .from("customers")

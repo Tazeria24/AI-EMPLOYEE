@@ -29,7 +29,16 @@ export const searchProductsTool: AgentTool = {
     }
 
     try {
-      const products = await listProducts({ search: query, status: "active" });
+      const products = await listProducts(
+        {
+          search: query,
+          status: "active",
+          // Written out, not assumed: with an injected service-role client
+          // (the public widget) RLS is not there to catch a mistake.
+          organizationId: context.organizationId,
+        },
+        context.client,
+      );
       if (products.length === 0) {
         return {
           content: `No active products matched "${query}". Do not guess a price or availability.`,
@@ -44,7 +53,6 @@ export const searchProductsTool: AgentTool = {
         sku: product.sku,
         description: product.description,
       }));
-      void context;
       return { content: JSON.stringify({ products: rows }) };
     } catch {
       return {

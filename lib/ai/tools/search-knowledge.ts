@@ -34,6 +34,7 @@ export const searchKnowledgeTool: AgentTool = {
         context.organizationId,
         query,
         MAX_RESULTS,
+        context.client,
       );
       if (matches.length === 0) {
         return {

@@ -55,28 +55,39 @@ Status: IN PROGRESS
   run de-duplication enforced by database constraints, and atomic run claiming
   proved with two concurrent connections)
 
+- **Milestone 09 — Website Widget** (widget_settings + widget_sessions +
+  usage_events + org_usage_daily, an embeddable chat that runs in an iframe on
+  our own origin, four public SECURITY DEFINER functions with `anon` holding no
+  table privileges at all, per-session and per-organization daily spend caps
+  enforced under a row lock, per-business embedding control via CSP
+  frame-ancestors, a dashboard with the embed snippet, kill switch, usage and
+  conversion figures; widget isolation + spend-cap tests passing on real
+  Postgres, and the cap proved under two concurrent connections)
+
 ## Current milestone
-08 — Automations (complete); Milestone 05's live evaluation still outstanding
+09 — Website Widget (complete); Milestone 05's live evaluation still outstanding
 
 ## Next action
-Milestone 05 is built and verified deterministically, but its acceptance
-criterion ("at least 100 representative conversations are evaluated") is NOT
-met yet: no live model run has happened. To close it out:
+Milestone 05's acceptance criterion ("at least 100 representative
+conversations are evaluated") is still NOT met: no live model run has happened,
+because this environment has no API keys and no Supabase project. To close it
+out:
 1. Provide ANTHROPIC_API_KEY and VOYAGE_API_KEY, and set EMBEDDING_PROVIDER=voyage.
-2. Create a Supabase project, apply migrations 0001–0005, seed a demo business
+2. Create a Supabase project, apply migrations 0001–0008, seed a demo business
    with products + knowledge.
 3. Wire evals/run.mjs to that org (currently it estimates cost and stops), then
    run `npm run eval` (~$2.05 for 105 cases before caching) and record results
    in progress/TEST_RESULTS.md.
-Milestone 06 is complete and did not need those credentials (its critical
-property, the takeover race, is proved in SQL). Milestone 05's live evaluation
-remains the outstanding item before the agent can be trusted with real
-customers. Next milestone: 09 — Website Widget. Note two things it must carry:
-audit finding #10 (a public widget endpoint calling a paid LLM is a
-cost-amplification vector — per-org budget with a hard cutoff, rate limits and
-a max messages/session are required, per ADR-011), and that the widget is what
-finally makes conversation-delivered follow-ups actually reach customers
-(ADR-050).
+That same setup is now also what stands between the widget and a real visitor
+conversation: everything up to the model call is proved (see M09 in
+TEST_RESULTS.md), but no live chat has run end to end.
+
+Next milestone: 10 — WhatsApp. Two things it must carry: connecting production
+WhatsApp is a decision-boundary stop that needs the founder's approval before
+anything touches Meta's production credentials, and the webhook work is where
+audit finding #13 lands (signature verification, an `external_event_id` unique
+constraint for idempotency, replay rejection). Milestone 11 (Billing) is still
+blocked on ADR-010 — Paystack vs Flutterwave — which remains PROPOSED.
 
 ## Rule
 Update this file after every completed milestone.

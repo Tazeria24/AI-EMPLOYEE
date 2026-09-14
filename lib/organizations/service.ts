@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type { BusinessProfile, Organization, OrgRole } from "./types";
 
@@ -43,8 +44,9 @@ export async function getCurrentContext(): Promise<CurrentContext | null> {
 /** Fetch the business profile for an organization (RLS-scoped). */
 export async function getBusinessProfile(
   organizationId: string,
+  client?: SupabaseClient,
 ): Promise<BusinessProfile | null> {
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
   const { data } = await supabase
     .from("business_profiles")
     .select(

@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ChatToolSpec } from "@/lib/ai/provider/types";
 
 /**
@@ -10,6 +11,12 @@ export interface ToolContext {
   userId: string;
   /** Set when the agent runs inside a conversation, so captured leads link to it. */
   conversationId?: string;
+  /**
+   * Injected when the agent runs without a user session (the public widget),
+   * where the request-scoped client would see nothing. The organization id
+   * above is resolved server-side from a validated session, never from input.
+   */
+  client?: SupabaseClient;
 }
 
 export interface ToolOutcome {

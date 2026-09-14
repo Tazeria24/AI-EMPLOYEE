@@ -6,12 +6,13 @@ answers questions, recommends products, captures and qualifies leads, follows
 up, escalates to humans and reports activity — using **verified business data
 only**.
 
-Implemented so far: **Milestones 00–08** — application foundation,
+Implemented so far: **Milestones 00–09** — application foundation,
 authentication, multi-tenancy with RLS, the product catalog, the knowledge base
 with pgvector retrieval, the AI agent (implementation complete; live evaluation
 still pending — see `progress/PROGRESS.md`), the conversation inbox with human
-takeover, the lead pipeline, and automated follow-up. See `docs/` for specifications and `progress/`
-for status, test results and decisions.
+takeover, the lead pipeline, automated follow-up, and the embeddable website
+widget. See `docs/` for specifications and `progress/` for status, test results
+and decisions.
 
 ## Tech stack
 
@@ -105,6 +106,7 @@ psql -d app -f supabase/migrations/0004_embeddings_voyage.sql
 psql -d app -f supabase/migrations/0005_agent.sql
 psql -d app -f supabase/migrations/0006_conversations.sql
 psql -d app -f supabase/migrations/0007_automations.sql
+psql -d app -f supabase/migrations/0008_widget.sql
 psql -d app -f supabase/tests/tenant_isolation.sql      # prints PASSED on success
 psql -d app -f supabase/tests/products_isolation.sql    # prints PASSED on success
 psql -d app -f supabase/tests/knowledge_isolation.sql   # prints PASSED on success
@@ -112,6 +114,7 @@ psql -d app -f supabase/tests/agent_isolation.sql       # prints PASSED on succe
 psql -d app -f supabase/tests/conversations_isolation.sql
 psql -d app -f supabase/tests/leads_isolation.sql
 psql -d app -f supabase/tests/automations_isolation.sql
+psql -d app -f supabase/tests/widget_isolation.sql
 ```
 
 On Supabase the shim is unnecessary — `auth.uid()` and the `authenticated`
@@ -159,6 +162,10 @@ Its safety properties are structural, not just prompted:
   lock. If someone took over while the model was still thinking, the reply is
   discarded rather than posted — so a customer never sees the AI and a person
   answering at once.
+- **Public spend is capped in the database.** The website widget is a public
+  endpoint where every message costs an LLM call, so the per-session and
+  per-organization daily limits are checked and recorded together under a row
+  lock, before anything paid runs. See "The website widget" below.
 
 ```bash
 npm test          # deterministic suite — no API key, no network, no cost
@@ -168,11 +175,58 @@ npm run eval      # live evaluation: 105 cases, prints a cost estimate first
 `npm run eval` calls the real model and spends money, so it is deliberately
 outside CI and asks for confirmation before running.
 
+
+## The website widget
+
+The widget is the first surface reachable by the public internet, and every
+message on it costs money. That shapes its whole design.
+
+A business pastes one line into their site:
+
+```html
+<script async src="https://your-domain.com/api/widget/embed?key=WIDGET_KEY"></script>
+```
+
+The loader injects an **iframe pointing back at our own origin**, so the chat
+runs in our document, not theirs: the session token, the transcript and the
+Supabase key are never readable by the host page, and every request the widget
+makes is same-origin. Which sites may embed it is set per business from
+`allowed_origins` and served as a `Content-Security-Policy: frame-ancestors`
+header; every other route in the app is `frame-ancestors 'none'`.
+
+What an anonymous visitor can actually do is defined by database grants rather
+than by application code:
+
+- The public API is **four SECURITY DEFINER functions** — `widget_config`,
+  `widget_start_session`, `widget_send`, `widget_frame_policy`. The `anon` role
+  holds EXECUTE on those and **no table privileges at all**, so a bug in a
+  route handler cannot become table access.
+- `widget_config` returns a name, a greeting and a colour. No prices, no
+  knowledge, no organization id — and an unknown key looks exactly like a
+  disabled one.
+- **Spend caps are enforced inside `widget_send`, under a row lock on the
+  session**, in the same transaction that records the message: a per-session
+  message cap, a per-organization daily message cap, and a per-organization
+  daily session cap (so opening fresh sessions is not a way around the first).
+  An application-level check would lose the race against concurrent requests;
+  this one does not, and a refused message releases the quota it took.
+- **The caller never names a tenant.** The visitor holds an opaque 256-bit
+  session token; the database resolves it to an organization, and that is what
+  the agent runs against.
+- The widget ships **switched off**. Turning it on is an owner/admin action,
+  and turning it back off stops the whole public surface immediately.
+
+Every widget conversation lands in `/dashboard/conversations`, where a human
+can take over at any time — and a takeover mid-turn discards the AI's in-flight
+reply rather than posting it.
+
 ## Project structure
 
 ```
 app/                 App Router routes and layouts
   api/health/        Health-check route handler
+  api/widget/        Public widget endpoints (config, session, message, embed)
+  widget/[key]/      The embeddable chat, rendered on our own origin
   login, signup, …   Auth pages
   auth/confirm/      Email verification / recovery callback
   dashboard/         Protected area (auth-guarded layout)
@@ -181,7 +235,7 @@ components/auth/     Auth-specific presentational components
 lib/                 Utilities and integrations
   env.ts             Environment access + validation
   site-url.ts        Resolve the site origin for email redirects
-  supabase/          Browser, server and proxy Supabase clients
+  supabase/          Browser, server, proxy and public (anon) Supabase clients
   auth/              Auth server actions + input validation
   organizations/     Org/membership/business-profile service, actions, validation
   products/          Product/category service, actions, validation, types
@@ -190,13 +244,14 @@ lib/                 Utilities and integrations
   leads/             Pipeline service, actions, status model and validation
   automations/       Follow-up eligibility rules, runner and service
   delivery/          Delivery providers (conversation, Resend email)
-  supabase/admin.ts  Service-role client — cron only, bypasses RLS
+  supabase/admin.ts  Service-role client — cron + widget only, bypasses RLS
   leads/             Customer + lead capture service and validation
   ai/provider/       Chat + embedding provider abstractions (Anthropic, Voyage, stub)
   ai/prompts/        System prompt construction
   ai/tools/          The agent's server-authorized tools
   ai/guardrails/     Untrusted-content wrapping + grounded-claim checking
   ai/agent/          The tool loop and its server action
+  widget/            Public widget validation, settings, frame policy
 evals/               Live evaluation cases (105) and runner
 proxy.ts             Session refresh + route protection (Next 16 proxy)
 supabase/            SQL migrations and tenant-isolation tests

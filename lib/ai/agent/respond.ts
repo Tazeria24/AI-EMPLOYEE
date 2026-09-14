@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getChatProvider } from "@/lib/ai/provider";
 import type { ChatTurn } from "@/lib/ai/provider/types";
@@ -28,13 +29,14 @@ export async function respondInConversation(
   conversationId: string,
   organizationId: string,
   userId: string,
+  client?: SupabaseClient,
 ): Promise<RespondResult> {
   const provider = getChatProvider();
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
 
   const [profile, history] = await Promise.all([
-    getBusinessProfile(organizationId),
-    listMessages(conversationId),
+    getBusinessProfile(organizationId, client),
+    listMessages(conversationId, client, client ? organizationId : undefined),
   ]);
 
   const organizationName = profile?.business_name ?? "this business";
@@ -66,7 +68,7 @@ export async function respondInConversation(
   const startedAt = Date.now();
   const result = await runAgentTurn(
     provider,
-    { organizationId, userId, conversationId },
+    { organizationId, userId, conversationId, client },
     {
       systemPrompt,
       userMessage: lastCustomerMessage.content,

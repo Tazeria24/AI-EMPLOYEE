@@ -206,4 +206,36 @@ Reason: a follow-up is still a message from the business. The same "never invent
 Decision: `lib/delivery` defines a `DeliveryProvider` with `conversation` and `email` (Resend) implementations, selected per automation.
 Reason: the abstraction is what tasks/08 asks for. Recorded limitation: until the widget (M09) or WhatsApp (M10) exists, a conversation-delivered follow-up is stored and visible in the inbox but does **not** reach the customer — email is currently the only channel that actually leaves the building. Automations default to `conversation` and start disabled, so nothing is sent on a business's behalf until they opt in.
 
+## ADR-051 — The widget's public API is four functions, and `anon` holds nothing else (accepted)
+Decision: the publicly reachable surface is `widget_config`, `widget_start_session`, `widget_send` and `widget_frame_policy` — SECURITY DEFINER functions on which `anon` holds EXECUTE. `anon` is granted **no table privileges at all**, and migration 0008 also revokes the default PUBLIC EXECUTE from the application's other functions.
+Reason: from this milestone the internet holds a key for the `anon` role, so "what can an anonymous caller do?" must be answerable by reading grants rather than by reasoning about route handlers. With no table grants, a bug in a route handler cannot become table access: the four functions are the whole attack surface, and each returns only the fields a visitor may see. Proved in `widget_isolation.sql`, which asserts anon holds no select/insert/update/delete on any business table and cannot execute the retrieval or message-append RPCs.
+
+## ADR-052 — Widget spend caps live inside the database, under a row lock (accepted)
+Decision: `widget_send` takes `select ... for update` on the session row, then checks the per-session message cap, the per-organization daily message cap and (in `widget_start_session`) the daily session cap — incrementing the counter and refusing in the same transaction, and releasing the increment when it refuses. Nothing paid runs unless the function returns `ok`.
+Reason: closes audit finding #10, the highest-cost risk in the product — a public endpoint where each request costs an LLM call plus an embedding call. An application-level "are we under the cap?" check loses the race against concurrent requests, which is exactly the shape of the attack. Verified with two connections: with worker A's `widget_send` uncommitted and the cap set to 1, worker B **blocked 1204 ms**, then returned `session_limit`; exactly one message was stored. Capping sessions as well as messages is what stops opening fresh sessions being a way around the per-session limit.
+
+## ADR-053 — The widget runs in an iframe on our own origin (accepted)
+Decision: the embed snippet injects an iframe pointing at `/widget/<key>` on our domain; the business's page never hosts the chat. Who may frame it is set per business from `allowed_origins` as a `Content-Security-Policy: frame-ancestors` header in `proxy.ts`; every other route is served `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
+Reason: the session token, the transcript and the Supabase key stay inside our origin, so a compromised or hostile host page cannot read them, and the widget's own requests are same-origin — no CORS to get wrong. The origin list is validated against a strict `scheme://host[:port]` shape before it reaches the header, because a stray quote or semicolon there would rewrite the directive. It fails **open** (any embedder) on an unknown key or a lookup error: this header is an anti-abuse control, not the tenant boundary, so a transient database error should not take a working widget offline. Adding iframes to the app is also why the rest of it is now explicitly frame-denied.
+
+## ADR-054 — The widget's AI turn uses the service-role client, with the tenant resolved by the database (accepted, extends ADR-048)
+Decision: `POST /api/widget/message` runs the agent with the service-role client. The visitor sends only an opaque 256-bit session token; `widget_send` resolves it and returns the organization and conversation ids, and those — never anything from the request — are what the agent runs against.
+Reason: a widget visitor has no account, so there is no request-scoped client that can read products and knowledge or write a message. This is the second and last exception to ADR-048, and the riskier one because it *is* a request handler. What makes it safe is that a caller cannot name an organization: the tenant comes out of the database, keyed by a token it issued.
+
+## ADR-055 — Injected-client call sites must write the tenant filter out (accepted)
+Decision: `listProducts` and `listMessages` throw if a client is injected without an `organizationId`, and apply `.eq("organization_id", …)` when one is given. Functions that nothing injects (`getProduct`, `listCategories`) no longer accept a client at all.
+Reason: found while wiring ADR-054. `listProducts` relied entirely on RLS, which is correct for the request-scoped client and silently cross-tenant under a service-role one — precisely audit finding #7. Making the parameter required at the boundary turns "remember to scope it" into something the code refuses to skip.
+
+## ADR-056 — Widget sessions are created on the first message, not on page load (accepted)
+Decision: loading a page with the widget on it costs nothing; the session is created when the visitor actually sends something.
+Reason: a session consumes the business's daily session quota. Creating one per page view would let ordinary traffic — or a crawler — exhaust the quota without a single conversation happening.
+
+## ADR-057 — The widget keeps no transcript in the browser (accepted)
+Decision: the widget holds the conversation in component state only. There is no public endpoint that reads messages back, and a refresh starts a new chat.
+Reason: a read-back endpoint would be a second public surface to get right, and offers an attacker a way to fish for content using a stolen token. The business's copy of the conversation — the one that matters — is in the inbox, where a human can take over at any time.
+
+## ADR-058 — ADR-050's delivery gap is still open after the widget (accepted, revises ADR-050)
+Decision: the widget does **not** make conversation-delivered follow-ups reach customers. It follows from ADR-057: a widget session is not resumable, so a visitor who comes back gets a new conversation and never sees a follow-up posted into the old one.
+Reason: recorded because ADR-050 named the widget as one of the two things that would close this gap, and it does not. The widget delivers the *live* half — a visitor's question is answered in the moment — but not the asynchronous half. Email remains the only channel that reaches a customer unprompted; real push delivery waits for WhatsApp (M10). Making widget sessions resumable would close it, at the cost of a second public endpoint that reads message history back — deliberately not taken on in this milestone.
+
 Add future decisions here. Do not rewrite history; append revisions.

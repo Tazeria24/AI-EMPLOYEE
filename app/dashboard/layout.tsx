@@ -57,6 +57,12 @@ export default async function DashboardLayout({
               Automations
             </Link>
             <Link
+              href="/dashboard/widget"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Website chat
+            </Link>
+            <Link
               href="/dashboard/assistant"
               className="text-sm text-muted-foreground hover:text-foreground"
             >

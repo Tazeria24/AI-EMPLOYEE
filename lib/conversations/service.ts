@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type {
   Conversation,
@@ -115,13 +116,33 @@ export async function getConversation(id: string): Promise<Conversation | null> 
   return (data as Conversation | null) ?? null;
 }
 
-export async function listMessages(conversationId: string): Promise<Message[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
+/**
+ * Messages in a conversation, oldest first.
+ *
+ * `organizationId` is required whenever `client` is injected: the default
+ * request-scoped client is gated by RLS, but an injected service-role client
+ * (the public widget) is not, so the tenant boundary has to be written out.
+ */
+export async function listMessages(
+  conversationId: string,
+  client?: SupabaseClient,
+  organizationId?: string,
+): Promise<Message[]> {
+  if (client && !organizationId) {
+    throw new Error("listMessages: organizationId is required with an injected client");
+  }
+
+  const supabase = client ?? (await createClient());
+  let query = supabase
     .from("messages")
     .select("id, conversation_id, sender_type, content, created_at")
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
+    .eq("conversation_id", conversationId);
+
+  if (organizationId) {
+    query = query.eq("organization_id", organizationId);
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
   return (data as Message[] | null) ?? [];
 }

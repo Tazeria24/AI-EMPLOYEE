@@ -36,6 +36,7 @@ export const createLeadTool: AgentTool = {
       parsed.data,
       "ai_agent",
       context.conversationId ?? null,
+      context.client,
     );
     if (!result.ok) {
       return {

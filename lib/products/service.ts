@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type { Product, ProductCategory, ProductStatus } from "./types";
 
@@ -8,17 +9,32 @@ export interface ListProductsFilters {
   search?: string;
   status?: ProductStatus;
   categoryId?: string;
+  /**
+   * Required whenever `client` is injected. The default request-scoped client
+   * is gated by RLS, but an injected service-role client is not — so the
+   * caller has to write the tenant boundary out (lib/supabase/admin.ts, rule 2).
+   */
+  organizationId?: string;
 }
 
 /** List the current tenant's products (RLS-scoped), newest first. */
 export async function listProducts(
   filters: ListProductsFilters = {},
+  client?: SupabaseClient,
 ): Promise<Product[]> {
-  const supabase = await createClient();
+  if (client && !filters.organizationId) {
+    throw new Error("listProducts: organizationId is required with an injected client");
+  }
+
+  const supabase = client ?? (await createClient());
   let query = supabase
     .from("products")
     .select(PRODUCT_COLUMNS)
     .order("created_at", { ascending: false });
+
+  if (filters.organizationId) {
+    query = query.eq("organization_id", filters.organizationId);
+  }
 
   if (filters.status) {
     query = query.eq("status", filters.status);

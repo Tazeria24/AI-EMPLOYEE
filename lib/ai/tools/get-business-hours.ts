@@ -15,7 +15,10 @@ export const getBusinessHoursTool: AgentTool = {
   async handler(_input, context) {
     void _input;
     try {
-      const profile = await getBusinessProfile(context.organizationId);
+      const profile = await getBusinessProfile(
+        context.organizationId,
+        context.client,
+      );
       if (!profile) {
         return {
           content: "No business profile is configured. Offer a human instead of guessing.",

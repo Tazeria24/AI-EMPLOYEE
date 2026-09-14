@@ -398,3 +398,96 @@ This is the overlapping-cron-firing scenario, which an application-level
   but do NOT reach the customer until the widget (M09) or WhatsApp (M10)
   exists. Email is currently the only channel that actually leaves the
   building.
+
+---
+
+## Milestone 09 — Website Widget
+- date: 2026-09-14
+- commit: (this commit)
+- tests: `npm test` — **144 passed / 144** (18 files). New: widget input
+  validation (12 — widget-key and session-token shape, message length, the
+  frame-ancestors builder, refusal-to-message mapping) and widget settings
+  validation (allowed-origin parsing incl. CSP-breaking payloads, hex colour,
+  greeting length, every cap bound).
+- typecheck / lint: pass
+- build: `npm run build` — pass (adds /dashboard/widget, /widget/[key] and the
+  four /api/widget/* routes; 28 routes + Proxy)
+- isolation suites: **all eight PASSED** on real PostgreSQL 16, psql exit 0.
+  No regressions.
+
+### The public surface (audit finding #10) — proved by grant, not by argument
+`widget_isolation.sql` asserts that `anon`:
+  - holds **no** select/insert/update/delete on any of the 14 business tables
+    (widget settings/sessions/usage, products, knowledge, conversations,
+    messages, leads, customers, organizations, business profiles, agent runs)
+  - **can** execute exactly the four widget functions
+  - **cannot** execute `match_knowledge_chunks` or `append_ai_message` —
+    PostgreSQL's default PUBLIC grant on those was found open during this
+    milestone and is now revoked in migration 0008
+It also asserts `widget_config` returns exactly
+`business_name, greeting, theme_color` — no price, no knowledge, no
+organization id — and that an unknown key is indistinguishable from a
+disabled one (0 rows either way).
+
+### The spend caps — enforced by the database
+  - per-session cap: with the cap at 2, messages 1 and 2 are accepted, the
+    third returns `session_limit`, and exactly 2 messages are stored
+  - a refused message does **not** consume quota (the daily counter is
+    unchanged), so refusals cannot themselves become a denial of service
+  - per-organization daily message cap: the next message returns `org_limit`
+    and the counter is restored
+  - per-organization daily session cap: the next session returns
+    `rate_limited` and the counter is restored — this is what stops opening
+    fresh sessions being a way around the per-session limit
+  - a widget switched off mid-chat refuses an **existing** token too, not just
+    new sessions
+  - a B token only ever writes under org B, and is invisible as an A session
+
+### Concurrent messages on one session — two-connection race
+Per-session cap set to 1. Worker A called `widget_send` inside an uncommitted
+transaction; worker B called it on the same session 0.3s later:
+  - Worker A: `ok`
+  - Worker B: **blocked 1204 ms**, then `session_limit`
+  - final state: 1 message stored, `message_count` = 1, daily counter = 1
+Without the row lock both would have read "under the cap" and both would have
+called the model. This is the cost-amplification attack in miniature.
+
+- manual QA (`npm start`, dummy env):
+    - /dashboard/widget unauthenticated → 307 → /login?redirect=...
+    - GET /api/widget/config?key=nope → 404 `{"error":"not_found"}`
+    - GET /api/widget/config with a well-formed but unknown key → 404, same body
+    - POST /api/widget/session with a malformed key → 404
+    - POST /api/widget/message with a malformed token → 404
+    - POST /api/widget/message with a 2100-character message → 400
+    - GET /api/widget/embed?key=<32 hex> → 200 `application/javascript`
+    - GET /api/widget/embed?key=../../etc/passwd → 400
+    - GET /widget/<key> → 200, `content-security-policy: frame-ancestors *`
+      (no business configured in this environment, so it renders the neutral
+      "not available" state)
+    - GET /login and GET / → `frame-ancestors 'none'` + `X-Frame-Options: DENY`
+- security checks:
+  - the tenant is never named by the caller: the visitor holds a 256-bit
+    session token and the database resolves it to an organization
+  - the AI turn runs with the service-role client (a visitor has no session),
+    so RLS does not apply there — `listProducts` and `listMessages` now
+    **require** an explicit organizationId when a client is injected and throw
+    without one. `listProducts` previously relied on RLS alone, which would
+    have been cross-tenant on this path; found and fixed during this milestone
+  - `match_knowledge_chunks` already filters on `p_organization_id` inside the
+    function, so retrieval stays scoped under a service-role client
+  - allowed origins are validated against a strict `scheme://host[:port]`
+    shape before reaching the CSP header; `"; script-src *"`, `'unsafe-inline'`,
+    `*` and wildcard hosts are all rejected (unit-tested)
+  - the theme colour is re-checked against a hex literal in the client before
+    it reaches a style value
+  - the widget starts **disabled** for every organization; turning it on is an
+    owner/admin action and is the kill switch for the whole public surface
+  - sessions are created on first message, not page load, so ordinary traffic
+    cannot exhaust the daily session quota
+- not verified here: a complete live visitor conversation needs
+  ANTHROPIC_API_KEY / VOYAGE_API_KEY and a Supabase project, as in M05–M08.
+  Everything above the model call is proved; the model's answers are not.
+- known limitation (ADR-058): the widget does **not** close ADR-050's delivery
+  gap. A widget session is not resumable, so a follow-up posted into a widget
+  conversation is never seen by the visitor. Email remains the only channel
+  that reaches a customer unprompted.

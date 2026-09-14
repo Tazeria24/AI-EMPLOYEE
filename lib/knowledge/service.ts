@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getEmbeddingProvider } from "@/lib/ai/provider";
 import type { KnowledgeDocument, KnowledgeMatch } from "./types";
@@ -52,6 +53,7 @@ export async function searchKnowledge(
   organizationId: string,
   query: string,
   matchCount = 5,
+  client?: SupabaseClient,
 ): Promise<KnowledgeMatch[]> {
   const trimmedQuery = query.trim();
   if (trimmedQuery.length === 0) return [];
@@ -59,7 +61,7 @@ export async function searchKnowledge(
   const provider = getEmbeddingProvider();
   const [queryEmbedding] = await provider.embed([trimmedQuery], "query");
 
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
   const { data, error } = await supabase.rpc("match_knowledge_chunks", {
     p_organization_id: organizationId,
     p_query_embedding: JSON.stringify(queryEmbedding),
