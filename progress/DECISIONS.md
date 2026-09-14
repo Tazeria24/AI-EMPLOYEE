@@ -238,4 +238,44 @@ Reason: a read-back endpoint would be a second public surface to get right, and 
 Decision: the widget does **not** make conversation-delivered follow-ups reach customers. It follows from ADR-057: a widget session is not resumable, so a visitor who comes back gets a new conversation and never sees a follow-up posted into the old one.
 Reason: recorded because ADR-050 named the widget as one of the two things that would close this gap, and it does not. The widget delivers the *live* half — a visitor's question is answered in the moment — but not the asynchronous half. Email remains the only channel that reaches a customer unprompted; real push delivery waits for WhatsApp (M10). Making widget sessions resumable would close it, at the cost of a second public endpoint that reads message history back — deliberately not taken on in this milestone.
 
+## ADR-059 — Webhook authenticity: HMAC over the raw body, in constant time (accepted)
+Decision: `POST /api/webhooks/whatsapp` reads the **raw request body** and verifies `X-Hub-Signature-256` as HMAC-SHA256 of those exact bytes with the organization's `app_secret`, compared with `timingSafeEqual`. Anything malformed — missing header, wrong prefix, non-hex digest, no stored secret — is a flat 401.
+Reason: half of audit finding #13. Two details decide whether this is real: hashing the **raw** bytes (re-serializing parsed JSON changes whitespace and escaping, so the signature would never match — and the usual "fix" is to stop verifying), and a constant-time comparison (a byte-at-a-time compare leaks the expected digest). An unknown phone number, a missing secret and a forged signature all return the same 401, so probing reveals nothing about which businesses are connected.
+
+## ADR-060 — Replay protection is a unique constraint, not a memory (accepted)
+Decision: `integration_events` carries `unique (provider, external_event_id)`, and `claim_integration_event()` is an insert-on-conflict-do-nothing returning the new row id. The first delivery of a Meta message id gets an id and does the work; every redelivery gets NULL and returns 200 immediately.
+Reason: the other half of finding #13. Meta redelivers after any non-200, so duplicates are ordinary traffic rather than an attack, and they must be cheap and must not produce a second AI reply. Making the constraint the mechanism means a retry arriving *before* the first delivery commits is handled too. Verified with two connections: with worker A's claim uncommitted, worker B **blocked 1202 ms**, then received NULL; one row recorded. Cross-tenant replay of a captured event id is refused by the same constraint.
+
+## ADR-061 — The webhook always answers 200 once it is past the signature (accepted)
+Decision: after signature verification, every outcome — duplicate, disabled integration, unsupported message type, a failed model call — returns 200. Failures are recorded on `integration_events.status` and surfaced in the dashboard.
+Reason: Meta retries non-2xx responses. Reporting our own internal failure to Meta converts one failure into a retry storm that costs an LLM call each time. The business needs to see the failure; Meta does not.
+
+## ADR-062 — WhatsApp credentials are write-only for the dashboard (accepted)
+Decision: `whatsapp_integrations.verify_token`, `app_secret` and `access_token` carry **no SELECT grant** for `authenticated` — only UPDATE. The dashboard reads a view, `whatsapp_integration_status`, which reports `has_app_secret` / `has_access_token` / `has_verify_token` as booleans and re-applies the membership check itself. A blank field in the form means "keep what is stored" and never erases a secret.
+Reason: an access token can send messages as that business. Column-level grants make reading one a privilege error rather than a column someone has to remember to leave out of a select list. Proved in `whatsapp_isolation.sql`: selecting `app_secret` as `authenticated` raises `insufficient_privilege`.
+
+## ADR-063 — The webhook is the third service-role exception (accepted, revises ADR-054)
+Decision: `app/api/webhooks/whatsapp` uses the service-role client. ADR-054 said the widget was "the second and last" exception; that is now wrong and this ADR revises it. There are three: the automations cron, the widget's AI turn, and this webhook.
+Reason: the caller is Meta, which has no Supabase session at all. The safety argument is the same one as ADR-054 and it still holds: **the tenant is resolved by the database, not named by the caller** — the org comes from looking up `value.metadata.phone_number_id` in `whatsapp_integrations`, and every query is filtered by that id explicitly. What has changed is that "and last" was a promise the architecture could not keep; the invariant that matters is the resolution rule, not the count.
+
+## ADR-064 — Typed integration columns instead of the generic `integrations` blob (accepted)
+Decision: `whatsapp_integrations` has named columns (`phone_number_id`, `waba_id`, `verify_token`, `app_secret`, `access_token`) rather than `docs/DATABASE.md`'s generic `integrations` table with a `credentials_reference` blob.
+Reason: ADR-062 is only possible with named columns — a jsonb blob cannot carry a per-field grant, so "the dashboard may write this and never read it" would have to be enforced in application code. A unique index on `phone_number_id` (the webhook's routing key) likewise needs a real column. Revisit if a second provider arrives and the shapes turn out to be genuinely common.
+
+## ADR-065 — No template messages; out-of-window sends are refused (accepted)
+Decision: WhatsApp free-form text is sent only inside Meta's 24-hour customer service window, computed from the conversation's last inbound customer message (`lib/whatsapp/window.ts`). Outside it the delivery provider **refuses and records** rather than attempting the send. No message templates are sent in this milestone.
+Reason: templates need per-business Meta approval and are billed separately — that is founder territory and real money (CLAUDE.md's decision boundary), not something to slip in. Refusing deliberately also makes the limit visible in `automation_runs` instead of arriving as an opaque Meta API error. Replying to a customer who just messaged never hits this, because their message is what opens the window.
+
+## ADR-066 — WhatsApp narrows ADR-058's gap to a 24-hour window (accepted, revises ADR-050 and ADR-058)
+Decision: an automated follow-up can now reach a customer unprompted, over WhatsApp, **if they messaged within the last 24 hours**. Beyond that, email remains the only channel that reaches them.
+Reason: stated as what it is rather than "WhatsApp closes the gap". ADR-050 predicted WhatsApp would close it and ADR-058 recorded that the widget did not; this is the honest third instalment. Closing it fully needs ADR-065's template decision.
+
+## ADR-067 — The integration ships disabled and refuses to be enabled half-configured (accepted)
+Decision: `whatsapp_integrations.enabled` defaults to false for every organization, including newly created ones. The webhook drops verified messages for a disabled integration without calling the model, and the dashboard refuses to enable one until the phone number id and all three secrets are present.
+Reason: CLAUDE.md makes connecting production WhatsApp a founder decision, so the default must be off and turning it on must be a separate deliberate act rather than a side effect of saving a form. It doubles as the kill switch: one click stops every reply.
+
+## ADR-068 — Non-text messages are acknowledged, not interpreted (accepted)
+Decision: images, audio, documents and location messages get a fixed "I can only read text messages" reply, are recorded as a system message in the thread, and the model is never called.
+Reason: `tasks/10` says media handling "only if necessary". Guessing at an image's contents is exactly the invent-a-fact failure this product exists to avoid, and calling the model to say "I can't read that" would spend money to produce a constant.
+
 Add future decisions here. Do not rewrite history; append revisions.

@@ -64,30 +64,45 @@ Status: IN PROGRESS
   conversion figures; widget isolation + spend-cap tests passing on real
   Postgres, and the cap proved under two concurrent connections)
 
+- **Milestone 10 — WhatsApp** (PARTIAL — see below): whatsapp_integrations +
+  integration_events, a signed webhook (raw-body HMAC + constant-time compare),
+  replay protection as a unique constraint with atomic event claiming, inbound
+  → AI → outbound wiring through the existing agent and takeover path, a
+  WhatsApp delivery provider gated on Meta's 24-hour window, write-only
+  credentials enforced by column-level grants, and a dashboard that ships the
+  integration switched off; whatsapp isolation + replay tests passing on real
+  Postgres, and the replay case proved under two concurrent connections
+
 ## Current milestone
-09 — Website Widget (complete); Milestone 05's live evaluation still outstanding
+10 — WhatsApp (PARTIAL); Milestone 05's live evaluation still outstanding
 
 ## Next action
-Milestone 05's acceptance criterion ("at least 100 representative
-conversations are evaluated") is still NOT met: no live model run has happened,
-because this environment has no API keys and no Supabase project. To close it
-out:
-1. Provide ANTHROPIC_API_KEY and VOYAGE_API_KEY, and set EMBEDDING_PROVIDER=voyage.
-2. Create a Supabase project, apply migrations 0001–0008, seed a demo business
-   with products + knowledge.
-3. Wire evals/run.mjs to that org (currently it estimates cost and stops), then
-   run `npm run eval` (~$2.05 for 105 cases before caching) and record results
-   in progress/TEST_RESULTS.md.
-That same setup is now also what stands between the widget and a real visitor
-conversation: everything up to the model call is proved (see M09 in
-TEST_RESULTS.md), but no live chat has run end to end.
+Two milestones now carry the same blocker, and it is the top priority before
+anything else ships:
 
-Next milestone: 10 — WhatsApp. Two things it must carry: connecting production
-WhatsApp is a decision-boundary stop that needs the founder's approval before
-anything touches Meta's production credentials, and the webhook work is where
-audit finding #13 lands (signature verification, an `external_event_id` unique
-constraint for idempotency, replay rejection). Milestone 11 (Billing) is still
-blocked on ADR-010 — Paystack vs Flutterwave — which remains PROPOSED.
+**Credentials + a Supabase project.** M05's acceptance criterion ("at least 100
+representative conversations are evaluated") has never been met, and M10's
+("test environment supports verified inbound → AI → outbound") cannot be met
+here either — `developers.facebook.com` is blocked by this environment's
+egress proxy and there are no Meta test credentials. To close both:
+1. Provide ANTHROPIC_API_KEY and VOYAGE_API_KEY, set EMBEDDING_PROVIDER=voyage.
+2. Create a Supabase project, apply migrations 0001–0009, seed a demo business
+   with products + knowledge.
+3. Wire evals/run.mjs to that org, then run `npm run eval` (~$2.05 for 105
+   cases) and record results in progress/TEST_RESULTS.md.
+4. Create a Meta test app + test number, point its callback at
+   `/api/webhooks/whatsapp`, and drive one real inbound → AI → outbound round
+   trip. **Connecting production WhatsApp or messaging real customers is a
+   decision-boundary stop and needs the founder's approval** — the integration
+   ships disabled and refuses to turn on half-configured, so nothing goes out
+   by accident.
+
+Next milestone: 11 — Billing, which is **still blocked on ADR-010** (Paystack
+vs Flutterwave, PROPOSED). That decision is needed before the subscription
+schema and webhook work can start — and the payment webhook should reuse
+exactly what M10 just built: ADR-059 (raw-body HMAC) and ADR-060 (replay
+protection as a unique constraint on `integration_events`), which is already
+provider-agnostic.
 
 ## Rule
 Update this file after every completed milestone.

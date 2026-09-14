@@ -6,13 +6,15 @@ answers questions, recommends products, captures and qualifies leads, follows
 up, escalates to humans and reports activity — using **verified business data
 only**.
 
-Implemented so far: **Milestones 00–09** — application foundation,
+Implemented so far: **Milestones 00–10** — application foundation,
 authentication, multi-tenancy with RLS, the product catalog, the knowledge base
 with pgvector retrieval, the AI agent (implementation complete; live evaluation
 still pending — see `progress/PROGRESS.md`), the conversation inbox with human
-takeover, the lead pipeline, automated follow-up, and the embeddable website
-widget. See `docs/` for specifications and `progress/` for status, test results
-and decisions.
+takeover, the lead pipeline, automated follow-up, the embeddable website
+widget, and the WhatsApp channel (built and proved deterministically; a live
+round trip against Meta is still pending — see `progress/PROGRESS.md`). See
+`docs/` for specifications and `progress/` for status, test results and
+decisions.
 
 ## Tech stack
 
@@ -107,6 +109,7 @@ psql -d app -f supabase/migrations/0005_agent.sql
 psql -d app -f supabase/migrations/0006_conversations.sql
 psql -d app -f supabase/migrations/0007_automations.sql
 psql -d app -f supabase/migrations/0008_widget.sql
+psql -d app -f supabase/migrations/0009_whatsapp.sql
 psql -d app -f supabase/tests/tenant_isolation.sql      # prints PASSED on success
 psql -d app -f supabase/tests/products_isolation.sql    # prints PASSED on success
 psql -d app -f supabase/tests/knowledge_isolation.sql   # prints PASSED on success
@@ -115,6 +118,7 @@ psql -d app -f supabase/tests/conversations_isolation.sql
 psql -d app -f supabase/tests/leads_isolation.sql
 psql -d app -f supabase/tests/automations_isolation.sql
 psql -d app -f supabase/tests/widget_isolation.sql
+psql -d app -f supabase/tests/whatsapp_isolation.sql
 ```
 
 On Supabase the shim is unnecessary — `auth.uid()` and the `authenticated`
@@ -220,12 +224,59 @@ Every widget conversation lands in `/dashboard/conversations`, where a human
 can take over at any time — and a takeover mid-turn discards the AI's in-flight
 reply rather than posting it.
 
+
+## WhatsApp
+
+The official Meta WhatsApp Business Platform (never WhatsApp Web scraping). A
+business connects their own number from `/dashboard/whatsapp`, and customers
+message the AI employee directly — every thread lands in the same inbox, with
+the same human takeover.
+
+The webhook is public and costs money per event, so the order of operations at
+`POST /api/webhooks/whatsapp` is the security argument:
+
+1. Read the **raw body** — the signature covers those exact bytes, and hashing
+   re-serialized JSON would never match.
+2. Parse it **only far enough to route**: `phone_number_id` says which
+   business's app secret applies. Nothing is acted on yet.
+3. Verify `X-Hub-Signature-256` (HMAC-SHA256, constant-time). Fail → 401, with
+   nothing written and nothing spent. An unknown number and a forged signature
+   are indistinguishable from outside.
+4. **Claim the event by its Meta message id.** Meta redelivers after any
+   non-200, so duplicates are ordinary traffic; a `unique (provider,
+   external_event_id)` constraint means a redelivery costs one no-op INSERT
+   instead of a second AI reply — even when the retry arrives before the first
+   delivery has committed.
+5. Only then: record the customer, the conversation and the message, answer,
+   and send.
+
+Everything past step 3 answers 200. Reporting our own failure to Meta would
+just multiply retries; failures are recorded on `integration_events` and shown
+in the dashboard instead.
+
+Two further properties worth knowing:
+
+- **Credentials are write-only.** `verify_token`, `app_secret` and
+  `access_token` carry no SELECT grant for the dashboard role at all — reading
+  one is a privilege error. The UI reads a view that reports only whether each
+  is set.
+- **It ships switched off**, and refuses to be switched on until every
+  credential is present. Connecting production WhatsApp is a founder decision
+  (`CLAUDE.md`), so it is a deliberate act, and the same switch is the kill
+  switch.
+
+Current limits: text only (media is acknowledged, not interpreted), and no
+message templates — so an automated follow-up reaches a customer only within
+Meta's 24-hour customer service window. Outside it the send is refused and
+recorded rather than attempted.
+
 ## Project structure
 
 ```
 app/                 App Router routes and layouts
   api/health/        Health-check route handler
   api/widget/        Public widget endpoints (config, session, message, embed)
+  api/webhooks/      Signed provider webhooks (WhatsApp)
   widget/[key]/      The embeddable chat, rendered on our own origin
   login, signup, …   Auth pages
   auth/confirm/      Email verification / recovery callback
@@ -252,6 +303,7 @@ lib/                 Utilities and integrations
   ai/guardrails/     Untrusted-content wrapping + grounded-claim checking
   ai/agent/          The tool loop and its server action
   widget/            Public widget validation, settings, frame policy
+  whatsapp/          Signature + handshake, payload parsing, 24h window, client
 evals/               Live evaluation cases (105) and runner
 proxy.ts             Session refresh + route protection (Next 16 proxy)
 supabase/            SQL migrations and tenant-isolation tests

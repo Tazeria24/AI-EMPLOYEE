@@ -17,6 +17,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next({ request });
   }
 
+  // Webhooks authenticate with a provider signature, not a Supabase session.
+  // Touching cookies here would only slow down every delivery.
+  if (pathname.startsWith("/api/webhooks/")) {
+    return NextResponse.next({ request });
+  }
+
   const response = await updateSession(request);
   // Everything except the widget stays unframeable. The widget introduced
   // iframes to this app; this keeps that door open only where it was opened.

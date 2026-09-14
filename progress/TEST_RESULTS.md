@@ -491,3 +491,94 @@ called the model. This is the cost-amplification attack in miniature.
   gap. A widget session is not resumable, so a follow-up posted into a widget
   conversation is never seen by the visitor. Email remains the only channel
   that reaches a customer unprompted.
+
+---
+
+## Milestone 10 — WhatsApp (PARTIAL — see "not verified" below)
+- date: 2026-09-14
+- commit: (this commit)
+- tests: `npm test` — **193 passed / 193** (22 files). New: signature
+  verification (15 — valid, tampered body, wrong secret, absent secret, six
+  malformed header shapes, upper-case hex, and a raw-bytes-vs-reparsed-JSON
+  case), the verify-token handshake (5), inbound payload parsing (13 — text,
+  status callback, non-text, truncation, missing ids, no routing id, and eight
+  malformed bodies), the 24-hour window (8), connection-form validation (8).
+- typecheck / lint: pass
+- build: `npm run build` — pass (adds /api/webhooks/whatsapp and
+  /dashboard/whatsapp; 30 routes + Proxy)
+- isolation suites: **all nine PASSED** on real PostgreSQL 16, psql exit 0.
+  No regressions.
+
+### Replay protection (audit finding #13) — a constraint, not a memory
+`whatsapp_isolation.sql` proves:
+  - the first `claim_integration_event` for a Meta message id returns an id
+  - a **redelivery of the same id returns NULL** — so no second AI reply
+  - only **one** `integration_events` row exists afterwards
+  - a direct duplicate insert is rejected (`unique_violation`)
+  - **cross-tenant replay** of a captured event id is rejected by the same
+    constraint
+  - one customer per WhatsApp number per organization (`unique_violation` on a
+    duplicate), so concurrent deliveries cannot fork a conversation — while the
+    same number at a *different* business is correctly a different customer
+
+### Concurrent redelivery — two-connection race
+Worker A claimed `wamid.RACE` inside an uncommitted transaction; worker B
+attempted the same event 0.3s later:
+  - Worker A: claimed (returned an id)
+  - Worker B: **blocked 1202 ms**, then returned **NULL**
+  - one row recorded
+This is Meta retrying before the first delivery has committed — the case an
+application-level "have we seen this id?" check does not survive.
+
+### Credentials are write-only for the dashboard
+  - `has_column_privilege('authenticated', …, 'select')` is **false** for
+    `verify_token`, `app_secret` and `access_token`, and **true** for `update`
+  - selecting `app_secret` or `access_token` as `authenticated` raises
+    `insufficient_privilege` — a privilege error, not an empty result
+  - `whatsapp_integration_status` reports them as booleans only, and is
+    tenant-scoped even though it runs as its owner (org B is invisible through it)
+  - `anon` holds nothing on `whatsapp_integrations`, `integration_events` or
+    the status view, and cannot execute `claim_integration_event`
+  - a newly created organization gets an integration row with `enabled = false`
+
+- manual QA (`npm start`, dummy env):
+    - GET the webhook with a wrong verify token → **403**
+    - GET with missing hub params → **403**
+    - POST with no signature → **401** `{"error":"unauthorized"}`
+    - POST with a valid-looking signature for an unknown phone number id →
+      **401** (fails closed; indistinguishable from a forged signature, so
+      probing reveals nothing about which businesses are connected)
+    - POST a tampered body with an otherwise-valid signature → **401**
+    - POST a status callback (delivered/read, no `messages`) → **200**, no work
+    - POST non-JSON → **200**, no work (no retry storm)
+    - /dashboard/whatsapp unauthenticated → 307 → /login?redirect=...
+- security checks:
+  - the signature is computed over the **raw body**, before any JSON parse
+    (unit-tested against a reparsed-but-equivalent body, which must fail)
+  - constant-time comparison for both the signature and the verify token, with
+    a length pre-check so a mismatched length returns false instead of throwing
+  - the payload is parsed before verification **only to route** — to read
+    `phone_number_id` — and nothing is written, sent or spent until the
+    signature passes. The parser is pure and tested against eight malformed
+    bodies, so it cannot itself be a vector
+  - the tenant is resolved from the database by `phone_number_id`; nothing in
+    the payload chooses an organization (ADR-063, revising ADR-054's "second
+    and last" service-role exception)
+  - a verified message for a **disabled** integration is dropped without
+    calling the model
+  - human takeover still wins: the reply goes through `append_ai_message`, and
+    a discarded reply is not sent over WhatsApp either
+  - non-text messages get a fixed reply with no model call
+- **not verified here — M10 is PARTIAL.** `developers.facebook.com` is blocked
+  by this environment's egress proxy, and there are no Meta test credentials,
+  no `ANTHROPIC_API_KEY` and no Supabase project. So `tasks/10`'s acceptance
+  criterion — "test environment supports verified inbound → AI → outbound" —
+  is **not met**. What is proved: signature verification, the handshake,
+  payload parsing, the window rule, replay protection (including under
+  concurrency) and tenant isolation. What is not: a real round trip against
+  Meta's sandbox, the exact live payload shape, and the send call against the
+  real Cloud API. Closing it needs a Meta test number plus the same API keys
+  and Supabase project M05 has been waiting on.
+- known limitation (ADR-065/066): no message templates, so WhatsApp reaches a
+  customer unprompted only within 24 hours of their last message. Beyond that,
+  email is still the only channel that gets through.

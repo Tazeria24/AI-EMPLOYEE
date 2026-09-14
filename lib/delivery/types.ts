@@ -1,10 +1,17 @@
-export type DeliveryChannel = "conversation" | "email";
+export type DeliveryChannel = "conversation" | "email" | "whatsapp";
 
 export interface DeliveryTarget {
   organizationId: string;
   /** Present when the lead came from a conversation. */
   conversationId: string | null;
   customerEmail: string | null;
+  /** The customer's WhatsApp number, when they have reached us that way. */
+  customerWaId: string | null;
+  /**
+   * When the customer last messaged us. WhatsApp only permits free-form
+   * replies within 24 hours of this (lib/whatsapp/window.ts).
+   */
+  lastInboundAt: string | null;
   customerName: string | null;
   businessName: string;
 }

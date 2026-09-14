@@ -180,7 +180,9 @@ export async function executeRun(
 
   const { data: leadRow } = await supabase
     .from("leads")
-    .select("id, intent, conversation_id, customers(name, email, marketing_opt_out)")
+    .select(
+      "id, intent, conversation_id, customers(name, email, marketing_opt_out, external_channel, external_customer_id)",
+    )
     .eq("id", typedRun.lead_id)
     // Explicit: the cron runner uses the service-role client, so RLS is not
     // enforcing the tenant boundary here — this filter is.
@@ -234,11 +236,32 @@ export async function executeRun(
     return { ok: false, error: draft.error };
   }
 
+  // WhatsApp may only be replied to within 24 hours of the customer's last
+  // inbound message, so the provider needs to know when that was.
+  let lastInboundAt: string | null = null;
+  if (lead.conversation_id) {
+    const { data: lastInbound } = await supabase
+      .from("messages")
+      .select("created_at")
+      .eq("organization_id", organizationId)
+      .eq("conversation_id", lead.conversation_id)
+      .eq("sender_type", "customer")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    lastInboundAt = (lastInbound as { created_at: string } | null)?.created_at ?? null;
+  }
+
   const provider = getDeliveryProvider(channel);
   const target = {
     organizationId,
     conversationId: lead.conversation_id,
     customerEmail: customer?.email ?? null,
+    customerWaId:
+      customer?.external_channel === "whatsapp"
+        ? customer?.external_customer_id ?? null
+        : null,
+    lastInboundAt,
     customerName: customer?.name ?? null,
     businessName,
   };
