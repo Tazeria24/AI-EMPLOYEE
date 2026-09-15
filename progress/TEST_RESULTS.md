@@ -796,3 +796,41 @@ category primary key. It now deletes the organization explicitly first.
   same gap M05 has carried since it was built.
 - `docs/QA.md` is the script to run once an instance exists; steps marked
   **[no-key]** are the ones that work without an AI provider.
+
+---
+
+## Continuous integration (post-Milestone 13)
+- date: 2026-09-15
+- commit: (this commit)
+- Closes known issue #15's first half: the checks now run automatically. What
+  remains is branch protection, which is a repository setting.
+
+`.github/workflows/ci.yml`, on every push and pull request:
+
+| Job | Steps |
+| --- | --- |
+| Types, lint, tests, build | `npm ci`, typecheck, lint, `npm test` (340 cases, no API key, no network), `npm run build` |
+| Migrations and isolation suites | `pgvector/pgvector:pg16` service, then `npm run test:db` — all 12 migrations, all 12 suites, and the demo seed applied twice |
+| Dependency audit | `npm audit --audit-level=high` |
+
+`npm run eval` is deliberately excluded (ADR-037): it calls a real model.
+
+### Verification of the CI path itself
+A workflow that has never failed has not been tested. Both directions were
+checked locally:
+
+- **The exact CI invocation was rehearsed**, not approximated: TCP connection,
+  password authentication, running as a non-`postgres` OS user, via
+  `npm run test:db`. → 12 migrations applied, **12/12 suites passed**, demo
+  seed idempotent, exit 0.
+- **A deliberately failing suite was added** (`assert false`) to confirm the
+  script notices. → `FAIL zzdeliberate_isolation`, "1 check(s) failed",
+  **exit code 1**. Removed, and exit 0 again. This also confirms the glob picks
+  up a new suite with no change to the workflow.
+
+### A problem found while writing it
+Running the demo seed against the same database as the suites failed three of
+them — `tenant`, `agent` and `whatsapp` assert absolute counts on an empty
+schema, and the seed leaves a demo organization behind ("expected 2 orgs
+seeded, saw 3"). A working seed looked like three broken tests. The seed check
+now runs in its own database (ADR-095).

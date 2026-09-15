@@ -75,6 +75,7 @@ See `.env.example`. Conventions:
 | `npm run typecheck` | TypeScript type checking (`tsc`)     |
 | `npm test`          | Run the Vitest suite once            |
 | `npm run test:watch`| Run Vitest in watch mode             |
+| `npm run test:db`   | Migrations + all isolation suites    |
 | `npm run eval`      | Live agent evaluation (costs money)  |
 
 ## Authentication
@@ -137,6 +138,35 @@ psql -d app -f supabase/tests/beta_isolation.sql
 
 On Supabase the shim is unnecessary — `auth.uid()` and the `authenticated`
 role already exist.
+
+Rather than running those by hand, use the script CI uses:
+
+```bash
+# rebuilds a throwaway database, applies every migration, runs every suite
+su postgres -c "PGDATABASE=app bash scripts/db-test.sh"
+
+# add SEED=1 to also check the demo seed still applies and is idempotent
+```
+
+Migrations and suites are discovered by glob, so adding
+`supabase/tests/<name>_isolation.sql` is enough to make CI run it.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+| Job | What it does |
+| --- | --- |
+| Types, lint, tests, build | `typecheck`, `lint`, `test` (no API key, no network, no cost), `build` |
+| Migrations and isolation suites | every migration applied to a fresh pgvector database, then all twelve suites, plus the demo seed |
+| Dependency audit | `npm audit --audit-level=high` |
+
+`npm run eval` is deliberately **not** in CI — it calls a real model and spends
+money (ADR-037).
+
+CI reports but does not yet block: requiring these checks before a merge is a
+repository setting (branch protection), not something a workflow can do for
+itself. See known issue #15.
 
 ## Knowledge base & embeddings
 

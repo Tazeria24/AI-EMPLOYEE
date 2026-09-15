@@ -85,8 +85,20 @@ CAPTCHA costs conversions. Revisit if abuse actually appears.
 A user belongs to the first organization they were added to. No switcher, no
 multi-business accounts. Fine for the ICP; a real gap for an agency.
 
-### 15. No CI pipeline
-`docs/SECURITY.md` calls for typecheck, lint, tests and the isolation suites to
-be required checks. They all pass and are run by hand every milestone, but
-nothing enforces them on a push. The SQL suites need a PostgreSQL service
-container.
+### 15. CI does not enforce branch protection
+Typecheck, lint, tests, the production build, all twelve isolation suites, the
+demo seed and `npm audit` now run on every push and pull request
+(`.github/workflows/ci.yml`). What CI cannot do for itself is *require* those
+checks to pass before a merge — that is a repository setting.
+**Resolution:** in GitHub → Settings → Branches, add a rule for the default
+branch requiring the `Types, lint, tests, build`, `Migrations and isolation
+suites` and `Dependency audit` checks. Until then CI reports, it does not block.
+
+### 16. The isolation suites need the local Supabase shim
+`supabase/tests/00_supabase_shim.sql` emulates `auth.users`, `auth.uid()` and
+the `anon`/`authenticated` roles so the suites can run on plain PostgreSQL.
+It is a stand-in, not the real thing: a policy that behaves differently under
+Supabase's actual auth schema would pass locally and in CI. In practice the
+surface it emulates is small and stable, but it is a gap between "the tests
+pass" and "it works on Supabase".
+**Mitigation:** `docs/QA.md` runs against a real deployed instance.

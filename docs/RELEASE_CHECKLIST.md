@@ -10,7 +10,8 @@ Work top to bottom. Anything unticked is a reason not to invite a business.
 - [x] `npm run build` — production build succeeds
 - [x] All twelve SQL isolation suites pass on real PostgreSQL 16
 - [x] `npm audit` — 0 vulnerabilities
-- [ ] **CI enforcing the above on every push** (known issue #15)
+- [x] **CI runs all of the above on every push and pull request**
+- [ ] Branch protection requiring the CI checks before merge (known issue #15)
 
 ## Security — see `docs/SECURITY_AUDIT.md`
 

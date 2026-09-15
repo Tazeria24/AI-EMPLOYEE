@@ -123,10 +123,14 @@ Deploying to production, connecting production WhatsApp, sending real customer
 messages and charging a real card are all decision-boundary stops needing
 explicit approval.
 
-Worth doing whenever there is appetite, and blocked by nothing: **CI**
-(known issue #15). Typecheck, lint, tests and the twelve SQL suites all pass
-and are run by hand each milestone, but nothing enforces them on a push — the
-SQL suites need a PostgreSQL service container.
+**CI is now set up** (`.github/workflows/ci.yml`): typecheck, lint, 340 unit
+tests, the production build, all twelve SQL isolation suites against a
+pgvector service container, the demo seed, and `npm audit` — on every push and
+pull request. One step remains and it is a repository setting, not code:
+**turn on branch protection** so those checks are required before a merge.
+GitHub → Settings → Branches → add a rule for the default branch requiring
+`Types, lint, tests, build`, `Migrations and isolation suites` and
+`Dependency audit`. Until then CI reports; it does not block.
 
 ## Rule
 Update this file after every completed milestone.

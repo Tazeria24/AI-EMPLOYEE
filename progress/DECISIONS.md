@@ -375,4 +375,16 @@ Reason: a demo where everything is in stock and every question is easy teaches n
 Decision: `docs/KNOWN_ISSUES.md` lists fifteen items in the repository, separating the four that block beta from eleven documented limitations, each naming the ADR that chose it.
 Reason: every limitation here was a deliberate trade — no templates, lexical search, ILIKE, manual lead scores, rate limiting that fails open. Written down, each is a support conversation that starts from "yes, we know, here is why". Undocumented, the same limitation is a lost beta customer and an argument about whether it was a bug.
 
+## ADR-093 — CI runs the SQL suites, not just the TypeScript ones (accepted)
+Decision: `.github/workflows/ci.yml` has three jobs — typecheck/lint/test/build, a `database` job that applies every migration to a `pgvector/pgvector:pg16` service container and runs all twelve isolation suites plus the demo seed, and `npm audit --audit-level=high`.
+Reason: `docs/SECURITY.md` has required since Milestone 00 that the tenant-isolation, cross-tenant-retrieval and prompt-injection suites be *required checks*, not deferred to hardening. The TypeScript half of that was easy and the SQL half was the reason it never happened — it needs a real PostgreSQL with pgvector. A service container is all that takes. Every security property this project claims — cross-tenant retrieval returning nothing, the takeover race, the follow-up cap, `anon` holding no privileges, replay protection, credentials the dashboard cannot read, erasure actually erasing — lives in those suites. Leaving them out of CI would mean CI checked the half that was never the risk. The audit job fails only on high or critical: blocking every push on a low-severity dev-dependency advisory trains people to ignore the job, which costs more than it saves.
+
+## ADR-094 — CI and local development run the same script (accepted)
+Decision: `scripts/db-test.sh` rebuilds a throwaway database, applies every migration and runs every suite. CI calls `npm run test:db`; so does a developer. Migrations and suites are found by **glob**, never listed.
+Reason: two lists that must be kept in step will drift, and the failure is silent — a new suite that CI does not know about looks exactly like a passing one. With globs, adding `supabase/tests/foo_isolation.sql` is enough to make CI run it. The shared script also means "it passes on my machine" and "it passes in CI" are the same claim rather than two similar ones. Verified by rehearsing the exact CI path locally (TCP, password auth, non-postgres OS user) and by adding a deliberately failing suite to confirm the script exits non-zero — a CI job that cannot fail is worse than no CI.
+
+## ADR-095 — The demo seed is checked in its own database (accepted)
+Decision: with `SEED=1`, the seed is applied twice to a separate database and the organization count asserted, rather than being applied to the database the suites run against.
+Reason: found immediately on the first run. The seed leaves a demo organization behind, and several suites assert absolute counts on an empty schema ("expected 2 orgs, saw 3"). Sharing one database made a working seed look like three broken tests. Applying it twice is the check that matters, because the first version of the seed was not idempotent.
+
 Add future decisions here. Do not rewrite history; append revisions.

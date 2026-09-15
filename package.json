@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "eval": "node evals/run.mjs"
+    "eval": "node evals/run.mjs",
+    "test:db": "bash scripts/db-test.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",
@@ -36,5 +37,8 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
