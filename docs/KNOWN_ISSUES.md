@@ -90,9 +90,14 @@ Typecheck, lint, tests, the production build, all twelve isolation suites, the
 demo seed and `npm audit` now run on every push and pull request
 (`.github/workflows/ci.yml`). What CI cannot do for itself is *require* those
 checks to pass before a merge — that is a repository setting.
-**Resolution:** in GitHub → Settings → Branches, add a rule for the default
-branch requiring the `Types, lint, tests, build`, `Migrations and isolation
-suites` and `Dependency audit` checks. Until then CI reports, it does not block.
+**Resolution:** the ruleset is committed as
+`.github/rulesets/default-branch.json`. GitHub → Settings → Rules → Rulesets →
+New ruleset → **Import a ruleset**, upload that file, save. Until then CI
+reports, it does not block.
+
+Note: `main` is still at the original starter commit — the entire build lives
+on `claude/md-file-github-repo-jx0fhp` in PR #1. Protecting the default branch
+matters, but merging that PR matters first.
 
 ### 16. The isolation suites need the local Supabase shim
 `supabase/tests/00_supabase_shim.sql` emulates `auth.users`, `auth.uid()` and

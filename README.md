@@ -165,8 +165,9 @@ Migrations and suites are discovered by glob, so adding
 money (ADR-037).
 
 CI reports but does not yet block: requiring these checks before a merge is a
-repository setting (branch protection), not something a workflow can do for
-itself. See known issue #15.
+repository setting, not something a workflow can do for itself. The ruleset is
+committed as `.github/rulesets/default-branch.json` — import it from
+Settings → Rules → Rulesets. See `.github/rulesets/README.md`.
 
 ## Knowledge base & embeddings
 

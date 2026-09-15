@@ -834,3 +834,29 @@ them — `tenant`, `agent` and `whatsapp` assert absolute counts on an empty
 schema, and the seed leaves a demo organization behind ("expected 2 orgs
 seeded, saw 3"). A working seed looked like three broken tests. The seed check
 now runs in its own database (ADR-095).
+
+### CI verified on GitHub's runners
+The first two runs (push and pull request, both on `f484286`) **passed all
+three jobs**. The workflow was written without being able to execute it here,
+so the log was read rather than the badge trusted:
+
+```
+==> Building 'app' from 12 migrations
+    0001_multi_tenancy.sql ... 0012_beta.sql
+==> Running 12 isolation suites
+    PASS  agent_isolation ... PASS  widget_isolation      (12/12)
+==> Checking the demo seed (separate database, applied twice)
+    PASS  demo_seed (idempotent)
+All 12 isolation suites passed.
+```
+
+The service container's own log carries
+`FATAL: role "root" does not exist` at 14:15:35, nine seconds **before** the
+step ran. That is the runner's health probe — `pg_isready` with no `-U`
+defaults to the OS user, and returns 0 because the server answered. Harmless,
+but worth knowing it is expected rather than a symptom.
+
+Outstanding warning, not fixed: `actions/checkout@v4` targets Node 20 and is
+being forced onto Node 24. Bumping to v5 would silence it; breaking CI to
+silence a warning is the wrong trade without being able to verify the tag
+first.
