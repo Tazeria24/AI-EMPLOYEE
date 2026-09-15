@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { widgetFrameResponse } from "@/lib/widget/frame";
+import { applySecurityHeaders } from "@/lib/security/headers";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -8,26 +9,32 @@ export async function proxy(request: NextRequest) {
   // The embedded widget page. Public, no session, and the one thing in this
   // app that is meant to be framed by other sites.
   if (pathname.startsWith("/widget/")) {
-    return widgetFrameResponse(request);
+    const framed = await widgetFrameResponse(request);
+    // Everything except the frame policy, which the widget sets for itself.
+    applySecurityHeaders(framed.headers, { frameDeny: false });
+    return framed;
   }
 
   // Public widget endpoints carry a session token, not an auth cookie, so
   // there is no Supabase session to refresh.
   if (pathname.startsWith("/api/widget/")) {
-    return NextResponse.next({ request });
+    const response = NextResponse.next({ request });
+    applySecurityHeaders(response.headers);
+    return response;
   }
 
   // Webhooks authenticate with a provider signature, not a Supabase session.
   // Touching cookies here would only slow down every delivery.
   if (pathname.startsWith("/api/webhooks/")) {
-    return NextResponse.next({ request });
+    const response = NextResponse.next({ request });
+    applySecurityHeaders(response.headers);
+    return response;
   }
 
   const response = await updateSession(request);
   // Everything except the widget stays unframeable. The widget introduced
   // iframes to this app; this keeps that door open only where it was opened.
-  response.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
-  response.headers.set("X-Frame-Options", "DENY");
+  applySecurityHeaders(response.headers);
   return response;
 }
 

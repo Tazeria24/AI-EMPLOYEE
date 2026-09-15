@@ -663,3 +663,78 @@ the plan cap at 2 and the business's own setting at 100,000, message 3 returns
   against the stub, which uses the same raw-body HMAC scheme. What is not: a
   real checkout, a real provider's webhook payload shape, and settlement.
   Closing it needs the ADR-010 decision plus that provider's test keys.
+
+---
+
+## Milestone 12 — Monitoring & Security Hardening
+- date: 2026-09-15
+- commit: (this commit)
+- tests: `npm test` — **309 passed / 309** (29 files). New: log redaction (24 —
+  key-based, shape-based, Errors, circular structures, depth and array caps),
+  security headers (5), rate-limit key hashing (8), retention/deletion
+  validation (12), and a **prompt-injection suite** (17) running eight real
+  payloads against the untrusted-wrapping and grounding guardrails.
+- typecheck / lint: pass
+- build: `npm run build` — pass (adds /api/cron/retention and
+  /dashboard/privacy; 34 routes + Proxy)
+- isolation suites: **all eleven PASSED** on real PostgreSQL 16, psql exit 0.
+  No regressions.
+- `npm audit`: **0 vulnerabilities**
+
+Full findings are in `docs/SECURITY_AUDIT.md`, which covers all six audits
+`tasks/12` asks for. Highlights:
+
+### Rate limiting (was entirely absent)
+`hardening_isolation.sql` proves `consume_rate_limit`:
+  - the first N attempts pass and the next is refused
+  - a refused attempt does **not** reset the window
+  - a different subject has its own budget, so one attacker cannot lock
+    everyone else out
+  - an empty or null bucket key **fails closed**
+  - stale windows are purged while the current one survives
+
+### NDPR erasure — a real bug found and fixed mid-milestone
+The obvious implementation of "delete this customer" does **not** erase.
+`conversations.customer_id` and `leads.customer_id` are `ON DELETE SET NULL`,
+so deleting the customer row detached their history instead of removing it:
+every message they wrote stayed in the database looking anonymous while still
+being personal data. The first version of the test caught it. Both deletion
+functions now delete leads and conversations explicitly first. Proved: after
+erasure the customer, their conversation, their messages and their lead are all
+gone, and another tenant's are untouched.
+
+Also proved: a cross-tenant erasure attempt finds nothing (the row is not
+visible, so the function reports nothing to delete rather than deleting it);
+the retention sweep deletes conversations past a business's own period and
+redacts a stored WhatsApp number from an old webhook payload **while keeping
+the row**, because that row is the replay-protection record.
+
+### Security event log
+  - recordable with no organization at all (a failed login names no tenant)
+  - an out-of-range severity is coerced to `info` rather than rejected — an
+    audit write must never fail the operation it is auditing
+  - one tenant cannot read another's events, and org-less events are readable
+    by nobody through the dashboard
+  - `anon` cannot read `rate_limits` or `security_events`, and **nothing** can
+    read `rate_limits` directly — the function is the only path
+
+- manual QA (`npm start`, dummy env):
+    - `/login` returns `x-content-type-options: nosniff`,
+      `referrer-policy: strict-origin-when-cross-origin`,
+      `permissions-policy: camera=(), microphone=(), geolocation=(), payment=()`,
+      `content-security-policy: frame-ancestors 'none'`, `x-frame-options: DENY`
+      and `strict-transport-security: max-age=63072000; includeSubDomains; preload`
+    - `/widget/<key>` keeps `frame-ancestors *` and gains the baseline headers
+      **without** `X-Frame-Options` — the one page meant to be framed
+    - POST /api/cron/retention with no secret → **401**; with a wrong secret → **401**
+    - /dashboard/privacy unauthenticated → 307 → /login?redirect=...
+- security checks (mechanical, reproduced in the audit doc):
+  - `git ls-files | xargs grep` for Anthropic keys, JWT-shaped strings, private
+    key blocks and inline service-role assignments → **nothing**
+  - no file reading a non-`NEXT_PUBLIC_` variable is a `"use client"` component
+  - service-role call sites enumerated: 5, all matching one of the two
+    documented shapes (ADR-086)
+- **not verified here:** the live agent evaluation (still no
+  `ANTHROPIC_API_KEY`) — the deterministic injection suite is CI-gating, but
+  behavioural evidence needs a model. And a written privacy notice and consent
+  record, which are legal copy rather than code, are still needed before beta.

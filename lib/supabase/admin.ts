@@ -6,18 +6,25 @@ import { getPublicSupabaseConfig, getServiceRoleKey } from "@/lib/env";
  *
  * The planning audit (finding #7) called out exactly this risk: reaching for
  * the service-role key for convenience silently removes the tenant boundary.
- * So its use is restricted to code paths that have no user session and
- * therefore cannot use the request-scoped client. Today there are exactly two:
+ * So its use is restricted to code paths that cannot use the request-scoped
+ * client, and they fall into exactly two shapes:
  *
- *   - the automations cron runner (app/api/cron/automations), and
- *   - the public widget's AI turn (app/api/widget/message), which answers a
- *     visitor who has no account at all.
+ *   **A. Background jobs with no session at all**
+ *     - app/api/cron/automations  (follow-up scheduling and sending)
+ *     - app/api/cron/retention    (the NDPR retention sweep)
  *
- * The widget case is the one to be careful about, because it IS a request
- * handler. What makes it safe is that the tenant is not taken from the
- * request: the visitor sends an opaque session token, the database resolves it
- * to an organization inside widget_send(), and that id — never anything the
- * caller supplied — is what the agent runs against.
+ *   **B. Request handlers whose caller has no account, where the tenant is
+ *        resolved BY THE DATABASE rather than named by the caller**
+ *     - app/api/widget/message     (org resolved from a session token)
+ *     - app/api/webhooks/whatsapp  (org resolved from phone_number_id)
+ *     - app/api/webhooks/payments  (org echoed back, then confirmed to exist)
+ *
+ * Shape B is the one to be careful about, because these ARE request handlers.
+ * What makes them safe is the resolution rule, not their number: a caller
+ * hands over an opaque credential, the database says which organization that
+ * belongs to, and only that id is used. Earlier ADRs tried to cap the count
+ * ("the second and last"); the count kept moving and the rule did not, so the
+ * rule is what this comment states.
  *
  * Rules for any code that uses this client:
  *   1. Never call it from a request handler that acts on behalf of a signed-in

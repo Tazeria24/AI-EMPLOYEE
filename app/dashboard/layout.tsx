@@ -75,6 +75,12 @@ export default async function DashboardLayout({
               Plan
             </Link>
             <Link
+              href="/dashboard/privacy"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Privacy
+            </Link>
+            <Link
               href="/dashboard/assistant"
               className="text-sm text-muted-foreground hover:text-foreground"
             >

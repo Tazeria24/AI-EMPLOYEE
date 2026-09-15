@@ -1,4 +1,5 @@
 import { createPublicClient } from "@/lib/supabase/public";
+import { clientIp, consumeRateLimit } from "@/lib/security/rate-limit";
 import { isWidgetKey, statusMessage } from "@/lib/widget/validation";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,16 @@ export async function POST(request: Request) {
     supabase = createPublicClient();
   } catch {
     return Response.json({ error: "not_configured" }, { status: 503 });
+  }
+
+  // Per-visitor limit, on top of the per-organization daily session cap.
+  // The org cap protects the business's budget; this stops one visitor
+  // consuming it (docs/SECURITY.md: "per-business AND per-visitor limits").
+  if (!(await consumeRateLimit(supabase, "widgetSession", clientIp(request.headers)))) {
+    return Response.json(
+      { error: "Too many chats from here. Please try again later." },
+      { status: 429 },
+    );
   }
 
   const { data, error } = await supabase.rpc("widget_start_session", { p_key: key });

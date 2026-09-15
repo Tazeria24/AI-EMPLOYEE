@@ -81,33 +81,37 @@ Status: IN PROGRESS
   widget's daily cap now bounded by the plan; billing isolation + plan
   enforcement tests passing on real Postgres
 
+- **Milestone 12 — Monitoring & Security Hardening** (rate limiting on the auth
+  routes and the widget as an atomic database counter, hashed rate-limit and
+  audit subjects, a security event log, structured JSON logging with two-layer
+  PII redaction, Sentry/PostHog over HTTP with no SDK, security headers across
+  the app with the widget carved out, NDPR retention + erasure with a nightly
+  sweep, a CI-gating prompt-injection suite, and all six audits written up in
+  docs/SECURITY_AUDIT.md; hardening tests passing on real Postgres)
+
 ## Current milestone
-11 — Billing (PARTIAL); M05's live evaluation and M10's live round trip still outstanding
+12 — Monitoring & Security Hardening (complete); M05/M10/M11 live verification still outstanding
 
 ## Next action
-Three milestones now wait on things only the founder can provide. None of them
-block further building, but all three block shipping:
+Milestone 13 — Beta Launch is the last one, and it is the first that **cannot**
+be completed without the founder. Everything blocking it is external:
 
-1. **ADR-010 — Paystack or Flutterwave.** Still PROPOSED. M11 is built behind
-   the payment abstraction, so this is now one adapter file (`lib/payments/`)
-   plus that provider's test keys — not a rebuild. Until it is decided,
-   `PAYMENT_PROVIDER=stub` is the only valid setting and no money moves.
-2. **API keys + a Supabase project.** ANTHROPIC_API_KEY and VOYAGE_API_KEY with
-   EMBEDDING_PROVIDER=voyage, a Supabase project with migrations 0001–0010
-   applied and a demo business seeded. This closes M05's 105-case evaluation
-   (~$2.05) — the oldest outstanding item — and is also what makes a live
-   widget or WhatsApp conversation possible at all.
-3. **A Meta test app + test number** for M10's inbound → AI → outbound round
-   trip. **Connecting production WhatsApp or messaging real customers remains a
-   decision-boundary stop** — the integration ships disabled and refuses to
-   turn on half-configured.
+1. **ADR-010 — Paystack or Flutterwave**, plus that provider's test keys. M11
+   is built behind the payment abstraction, so this is one adapter file.
+2. **ANTHROPIC_API_KEY + VOYAGE_API_KEY + a Supabase project** (migrations
+   0001–0011). This closes M05's 105-case evaluation — the oldest outstanding
+   item, and the only thing standing between the agent and a real customer.
+3. **A Meta test app + number** for M10's inbound → AI → outbound round trip.
+4. **A privacy notice and consent record.** Legal copy, not a migration. The
+   machinery exists (retention, erasure, the privacy page); the document a
+   customer is shown does not, and it is required before real PII is stored.
 
-Next milestone: 12 — Monitoring & Security Hardening, which needs none of the
-above and is where the remaining audit findings land: Sentry and PostHog
-(`docs/ARCHITECTURE.md` observability), structured logging without PII, a
-webhook security audit across both webhooks, rate limiting on the auth routes,
-and finding #16 — the NDPR data-retention and delete-by-organization policy,
-which is a genuine gap before any real customer data is stored.
+Deploying to production and connecting production WhatsApp are both
+decision-boundary stops needing explicit approval.
+
+What can be done without any of the above: seed data and a demo script,
+onboarding polish, a landing page, and the beta feedback loop — the parts of
+`tasks/13` that do not touch production or spend money.
 
 ## Rule
 Update this file after every completed milestone.

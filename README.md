@@ -6,16 +6,17 @@ answers questions, recommends products, captures and qualifies leads, follows
 up, escalates to humans and reports activity — using **verified business data
 only**.
 
-Implemented so far: **Milestones 00–11** — application foundation,
+Implemented so far: **Milestones 00–12** — application foundation,
 authentication, multi-tenancy with RLS, the product catalog, the knowledge base
 with pgvector retrieval, the AI agent (implementation complete; live evaluation
 still pending — see `progress/PROGRESS.md`), the conversation inbox with human
 takeover, the lead pipeline, automated follow-up, the embeddable website
 widget, the WhatsApp channel, and subscription billing (the last two are built
 and proved deterministically; a live round trip against Meta and a chosen
-payment provider are still pending — see `progress/PROGRESS.md`). See
-`docs/` for specifications and `progress/` for status, test results and
-decisions.
+payment provider are still pending — see `progress/PROGRESS.md`), plus
+monitoring and security hardening. See `docs/` for specifications —
+including `docs/SECURITY_AUDIT.md` — and `progress/` for status, test results
+and decisions.
 
 ## Tech stack
 
@@ -112,6 +113,7 @@ psql -d app -f supabase/migrations/0007_automations.sql
 psql -d app -f supabase/migrations/0008_widget.sql
 psql -d app -f supabase/migrations/0009_whatsapp.sql
 psql -d app -f supabase/migrations/0010_billing.sql
+psql -d app -f supabase/migrations/0011_hardening.sql
 psql -d app -f supabase/tests/tenant_isolation.sql      # prints PASSED on success
 psql -d app -f supabase/tests/products_isolation.sql    # prints PASSED on success
 psql -d app -f supabase/tests/knowledge_isolation.sql   # prints PASSED on success
@@ -122,6 +124,7 @@ psql -d app -f supabase/tests/automations_isolation.sql
 psql -d app -f supabase/tests/widget_isolation.sql
 psql -d app -f supabase/tests/whatsapp_isolation.sql
 psql -d app -f supabase/tests/billing_isolation.sql
+psql -d app -f supabase/tests/hardening_isolation.sql
 ```
 
 On Supabase the shim is unnecessary — `auth.uid()` and the `authenticated`
@@ -347,6 +350,9 @@ lib/                 Utilities and integrations
   widget/            Public widget validation, settings, frame policy
   whatsapp/          Signature + handshake, payload parsing, 24h window, client
   billing/           Plans, entitlements, usage, plan-limit errors
+  observability/     Structured logging, PII redaction, error + event reporting
+  security/          Rate limiting, security event recording, response headers
+  privacy/           Retention settings and NDPR data erasure
   payments/          PaymentProvider abstraction (stub until ADR-010)
 evals/               Live evaluation cases (105) and runner
 proxy.ts             Session refresh + route protection (Next 16 proxy)

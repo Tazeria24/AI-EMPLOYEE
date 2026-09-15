@@ -311,4 +311,44 @@ Reason: WhatsApp costs per conversation on Meta's side as well as ours, so it ca
 Decision: `POST /api/webhooks/payments` verifies a raw-body signature before acting (ADR-059), claims the event through `claim_integration_event` on the provider's event id (ADR-060), and answers 200 for every outcome past the signature (ADR-061).
 Reason: the threats are identical and the answers generalize — `integration_events` was already provider-agnostic. A forged callback here is the direct route to a free Pro plan, and a retried "subscription renewed" must not extend the period twice. Only fields the provider actually reported are written, so a "payment failed" callback carrying no plan cannot blank the plan.
 
+## ADR-077 — Rate limiting is an atomic database counter (accepted)
+Decision: `consume_rate_limit(bucket, limit, window_seconds)` increments and tests in one statement against a fixed window. Sign-in is limited per email and per IP, signup per IP, password reset per email, and the widget per visitor on top of its existing per-organization spend caps.
+Reason: `docs/SECURITY.md` has required rate limits since Milestone 00 and there were none — password guessing against `/login` was free, and `/forgot-password` was an open way to send someone a lot of email. A read-then-increment limiter loses exactly the burst it exists to stop, the same lesson as ADR-038 and ADR-052. Fixed windows rather than a sliding log: an attacker gains at most one extra window, which is not worth a row per attempt on a login form. Two limits on sign-in because they stop different attacks — per email stops guessing one password, per IP stops spraying one password across many accounts.
+
+## ADR-078 — Rate-limit and audit subjects are hashed before storage (accepted)
+Decision: the bucket key is a SHA-256 of the subject (an email, an IP) with a server-side pepper, computed by the application. `security_events.subject_hash` is the same.
+Reason: "log security-relevant events without logging secrets or full PII". A rate-limit table keyed by plaintext email is a list of who uses the product and when they struggled to log in — readable by any operator and present in every backup. Hashed, it still answers "is this subject over the limit?" and "was someone throttled?", which is all it is for. It falls back to an unpeppered hash when `RATE_LIMIT_PEPPER` is unset: weaker against an offline attack on the table, but far better than disabling rate limiting because a variable is missing.
+
+## ADR-079 — The rate limiter fails open, the bucket key fails closed (accepted)
+Decision: a database error while consuming a limit allows the request; a malformed or empty bucket key refuses it.
+Reason: these look contradictory and are not. If the database is unreachable the application is already broken, and a limiter that denies everything turns a partial outage into a total one — the failure mode is worse than the attack. A malformed key, by contrast, means the caller is wrong, and allowing an unlimited request on a key we cannot compute is how a limiter gets bypassed.
+
+## ADR-080 — Structured JSON logging with two-layer redaction (accepted)
+Decision: `lib/observability/logger.ts` emits one JSON object per line. Every field passes through `redact()`, which blanks values whose **key** looks sensitive (including anything ending in `key`) and scrubs **shapes** — emails, phone numbers, long token-like strings — out of free text.
+Reason: a human-formatted log string is unsearchable the moment it matters. Both redaction layers are needed: key-based misses a customer's email inside a message body, shape-based misses a short token under a key named `app_secret`. Redaction sits in the logger rather than at call sites, so adding a field to a log call can never be the thing that leaks a credential. It is a `console` call with a shape — no dependency.
+
+## ADR-081 — Sentry and PostHog over HTTP, no SDK (accepted)
+Decision: `captureError()` always writes a structured log line, and additionally POSTs to Sentry's store endpoint when `SENTRY_DSN` is set. `trackEvent()` POSTs to PostHog's capture endpoint when configured. Neither SDK is installed.
+Reason: `@sentry/nextjs` brings a build plugin, instrumentation files and a large dependency tree for what is one POST, and CLAUDE.md says not to install dependencies without justification. The trade-off is real and stated rather than hidden: no automatic breadcrumbs, no release tracking, no source maps. The log line is the part that always works, so "monitoring captures actionable errors" does not depend on a third party being configured, reachable or within quota. Revisit if beta shows the SDK's extras earn their weight.
+
+## ADR-082 — Analytics properties are dropped, not redacted (accepted)
+Decision: `trackEvent()` refuses any property whose key looks sensitive, rather than sending `[redacted]`, and requires an opaque `distinctId` — an organization id, never an email.
+Reason: a `[redacted]` value in an analytics funnel is noise that looks like data. PostHog is a third party holding customer behaviour; the less that leaves, the smaller the question of what it holds.
+
+## ADR-083 — Security headers applied centrally, with the widget carved out (accepted)
+Decision: `applySecurityHeaders()` sets `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and `X-DNS-Prefetch-Control` everywhere, `frame-ancestors 'none'` plus `X-Frame-Options: DENY` everywhere except the widget, and HSTS in production only.
+Reason: each closes a specific hole — sniffing, dashboard URLs (which carry organization and record ids) leaking to every site a user clicks through to, and features the dashboard never needs. The widget is the one page meant to be framed and computes its own `frame-ancestors` from the business's allowed origins (ADR-053), so it is passed `frameDeny: false` rather than excluded from the rest. HSTS is production-only because pinning `localhost` to HTTPS in a developer's browser is painful to undo.
+
+## ADR-084 — NDPR retention is per-business and actually deletes (accepted, closes audit finding #16)
+Decision: `business_profiles.retention_days` (30–3650, default 365) is set by the business at `/dashboard/privacy`. `purge_expired_data()` deletes conversations past that period, redacts `integration_events.payload` after 30 days, and clears customers with nothing attached — driven nightly by `/api/cron/retention`.
+Reason: the largest open gap in the planning audit. Customer names, phone numbers and full conversations were being stored with no stated limit and no way to remove them. A retention policy that is only written down is not a retention policy; it has to delete things. The payload redaction keeps the `integration_events` row because that row is the replay-protection record (ADR-060) — only the customer's phone number goes.
+
+## ADR-085 — Erasure deletes conversations explicitly, because the cascade does not (accepted)
+Decision: `delete_customer_data()` and `purge_organization_customers()` delete leads and conversations **before** the customer row. Both are SECURITY INVOKER, so RLS decides what the caller may erase.
+Reason: found during this audit, and it is the trap in the obvious implementation. `conversations.customer_id` and `leads.customer_id` are `ON DELETE SET NULL`, so deleting the customer row **detached** their history rather than removing it: every message they wrote stayed in the database looking anonymous while still being personal data — the exact opposite of what an erasure request asks for. SECURITY INVOKER rather than DEFINER because RLS should be the boundary; the admin check inside is additional, not a substitute, and it means a cross-tenant erasure attempt finds nothing rather than being refused by a check that could be got wrong.
+
+## ADR-086 — The service-role rule replaces the service-role count (accepted, supersedes ADR-054 and ADR-063)
+Decision: `lib/supabase/admin.ts` no longer claims a number of exceptions. It states two admissible shapes: background jobs with no session (the two crons), and request handlers whose caller has no account **and whose tenant is resolved by the database rather than named by the caller** (the widget message route and both webhooks).
+Reason: ADR-054 said "the second and last"; ADR-063 corrected it to three; there are now five. The count kept moving and the rule never did, so the rule is what the documentation states. A promise the architecture cannot keep is worse than no promise — it stops being checked.
+
 Add future decisions here. Do not rewrite history; append revisions.

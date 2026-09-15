@@ -1,5 +1,7 @@
 import { createPublicClient } from "@/lib/supabase/public";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { clientIp, consumeRateLimit } from "@/lib/security/rate-limit";
+import { captureError } from "@/lib/observability/reporter";
 import { respondInConversation } from "@/lib/ai/agent/respond";
 import {
   isSessionToken,
@@ -58,6 +60,15 @@ export async function POST(request: Request) {
     return Response.json({ error: "not_configured" }, { status: 503 });
   }
 
+  // Per-visitor limit. The per-session and per-org caps inside widget_send
+  // still apply; this one bounds a single visitor across sessions.
+  if (!(await consumeRateLimit(publicClient, "widgetMessage", clientIp(request.headers)))) {
+    return Response.json(
+      { error: "You are sending messages too quickly. Please slow down." },
+      { status: 429 },
+    );
+  }
+
   const { data, error } = await publicClient.rpc("widget_send", {
     p_token: token,
     p_content: parsed.content,
@@ -102,9 +113,13 @@ export async function POST(request: Request) {
     }
 
     return Response.json({ reply: result.reply, escalated: result.escalated });
-  } catch {
+  } catch (error) {
     // The message is already recorded, so the business still sees it in the
     // inbox and can answer by hand.
+    await captureError(error, {
+      event: "widget.reply_failed",
+      organizationId: row.out_organization_id,
+    });
     return Response.json(
       {
         reply: null,
