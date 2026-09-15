@@ -33,6 +33,15 @@ select set_config('test.org_b',
   (select organization_id::text from public.organization_members
    where user_id = '00000000-0000-0000-0000-00000000000b'::uuid), true);
 
+-- WhatsApp is a paid-tier channel (Milestone 11): the plan trigger refuses to
+-- enable it on Starter. Put both businesses on Growth so this suite tests the
+-- WhatsApp properties rather than the billing gate, which billing_isolation.sql
+-- covers.
+update public.subscriptions set plan = 'growth', status = 'active'
+where organization_id in (
+  current_setting('test.org_a')::uuid, current_setting('test.org_b')::uuid
+);
+
 update public.whatsapp_integrations
   set phone_number_id = 'PHONE_A',
       waba_id = 'WABA_A',

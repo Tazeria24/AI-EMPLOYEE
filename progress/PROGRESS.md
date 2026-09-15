@@ -73,36 +73,41 @@ Status: IN PROGRESS
   integration switched off; whatsapp isolation + replay tests passing on real
   Postgres, and the replay case proved under two concurrent connections
 
+- **Milestone 11 — Billing** (PARTIAL — see below): subscriptions + plan_limits,
+  a PaymentProvider abstraction with a deterministic stub (ADR-010 still open),
+  plan limits enforced by database triggers on every write path, entitlement
+  that survives a failed card but not a cancellation, a signed idempotent
+  payment webhook reusing the M10 machinery, a plan/usage dashboard, and the
+  widget's daily cap now bounded by the plan; billing isolation + plan
+  enforcement tests passing on real Postgres
+
 ## Current milestone
-10 — WhatsApp (PARTIAL); Milestone 05's live evaluation still outstanding
+11 — Billing (PARTIAL); M05's live evaluation and M10's live round trip still outstanding
 
 ## Next action
-Two milestones now carry the same blocker, and it is the top priority before
-anything else ships:
+Three milestones now wait on things only the founder can provide. None of them
+block further building, but all three block shipping:
 
-**Credentials + a Supabase project.** M05's acceptance criterion ("at least 100
-representative conversations are evaluated") has never been met, and M10's
-("test environment supports verified inbound → AI → outbound") cannot be met
-here either — `developers.facebook.com` is blocked by this environment's
-egress proxy and there are no Meta test credentials. To close both:
-1. Provide ANTHROPIC_API_KEY and VOYAGE_API_KEY, set EMBEDDING_PROVIDER=voyage.
-2. Create a Supabase project, apply migrations 0001–0009, seed a demo business
-   with products + knowledge.
-3. Wire evals/run.mjs to that org, then run `npm run eval` (~$2.05 for 105
-   cases) and record results in progress/TEST_RESULTS.md.
-4. Create a Meta test app + test number, point its callback at
-   `/api/webhooks/whatsapp`, and drive one real inbound → AI → outbound round
-   trip. **Connecting production WhatsApp or messaging real customers is a
-   decision-boundary stop and needs the founder's approval** — the integration
-   ships disabled and refuses to turn on half-configured, so nothing goes out
-   by accident.
+1. **ADR-010 — Paystack or Flutterwave.** Still PROPOSED. M11 is built behind
+   the payment abstraction, so this is now one adapter file (`lib/payments/`)
+   plus that provider's test keys — not a rebuild. Until it is decided,
+   `PAYMENT_PROVIDER=stub` is the only valid setting and no money moves.
+2. **API keys + a Supabase project.** ANTHROPIC_API_KEY and VOYAGE_API_KEY with
+   EMBEDDING_PROVIDER=voyage, a Supabase project with migrations 0001–0010
+   applied and a demo business seeded. This closes M05's 105-case evaluation
+   (~$2.05) — the oldest outstanding item — and is also what makes a live
+   widget or WhatsApp conversation possible at all.
+3. **A Meta test app + test number** for M10's inbound → AI → outbound round
+   trip. **Connecting production WhatsApp or messaging real customers remains a
+   decision-boundary stop** — the integration ships disabled and refuses to
+   turn on half-configured.
 
-Next milestone: 11 — Billing, which is **still blocked on ADR-010** (Paystack
-vs Flutterwave, PROPOSED). That decision is needed before the subscription
-schema and webhook work can start — and the payment webhook should reuse
-exactly what M10 just built: ADR-059 (raw-body HMAC) and ADR-060 (replay
-protection as a unique constraint on `integration_events`), which is already
-provider-agnostic.
+Next milestone: 12 — Monitoring & Security Hardening, which needs none of the
+above and is where the remaining audit findings land: Sentry and PostHog
+(`docs/ARCHITECTURE.md` observability), structured logging without PII, a
+webhook security audit across both webhooks, rate limiting on the auth routes,
+and finding #16 — the NDPR data-retention and delete-by-organization policy,
+which is a genuine gap before any real customer data is stored.
 
 ## Rule
 Update this file after every completed milestone.

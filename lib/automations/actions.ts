@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { planLimitMessage } from "@/lib/billing/errors";
 import { getCurrentContext } from "@/lib/organizations/service";
 import { canManageOrg } from "@/lib/organizations/validation";
 import { DEFAULT_INACTIVE_HOURS } from "./eligibility";
@@ -37,7 +38,7 @@ export async function createFollowUpAutomation(): Promise<void> {
     // Off by default: sending on a business's behalf is opt-in.
     enabled: false,
   });
-  if (error) fail("Could not create the automation.");
+  if (error) fail(planLimitMessage(error, "Could not create the automation."));
 
   revalidatePath(BASE);
   redirect(BASE);

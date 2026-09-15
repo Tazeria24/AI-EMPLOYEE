@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { planLimitMessage } from "@/lib/billing/errors";
 import { getCurrentContext } from "@/lib/organizations/service";
 import { canManageOrg } from "@/lib/organizations/validation";
 import { parseKnowledgeDocument } from "./validation";
@@ -49,7 +50,10 @@ export async function createKnowledgeDocument(formData: FormData): Promise<void>
     .single();
 
   if (error || !data) {
-    fail(`${BASE}/new`, "Could not save the document. Please try again.");
+    fail(
+      `${BASE}/new`,
+      planLimitMessage(error, "Could not save the document. Please try again."),
+    );
   }
 
   // Index immediately; failures are recorded on the row and shown in the list.

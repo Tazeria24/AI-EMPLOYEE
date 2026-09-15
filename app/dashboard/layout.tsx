@@ -69,6 +69,12 @@ export default async function DashboardLayout({
               WhatsApp
             </Link>
             <Link
+              href="/dashboard/billing"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Plan
+            </Link>
+            <Link
               href="/dashboard/assistant"
               className="text-sm text-muted-foreground hover:text-foreground"
             >

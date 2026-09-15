@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentContext } from "@/lib/organizations/service";
 import { canManageOrg } from "@/lib/organizations/validation";
+import { planLimitMessage } from "@/lib/billing/errors";
 import { parseWhatsAppConnection } from "./validation";
 
 const PAGE = "/dashboard/whatsapp";
@@ -113,7 +114,10 @@ export async function setWhatsAppEnabled(formData: FormData): Promise<void> {
     .from("whatsapp_integrations")
     .update({ enabled })
     .eq("organization_id", ctx.organizationId);
-  if (error) fail("Could not update the WhatsApp connection. Please try again.");
+  if (error) {
+    // WhatsApp is a paid-tier channel; the plan trigger refuses it on Starter.
+    fail(planLimitMessage(error, "Could not update the WhatsApp connection. Please try again."));
+  }
 
   revalidatePath(PAGE);
   redirect(PAGE);

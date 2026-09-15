@@ -582,3 +582,84 @@ application-level "have we seen this id?" check does not survive.
 - known limitation (ADR-065/066): no message templates, so WhatsApp reaches a
   customer unprompted only within 24 hours of their last message. Beyond that,
   email is still the only channel that gets through.
+
+---
+
+## Milestone 11 — Billing (PARTIAL — no payment provider chosen yet)
+- date: 2026-09-15
+- commit: (this commit)
+- tests: `npm test` — **236 passed / 236** (24 files). New: plans and
+  entitlements (20 — status→entitlement mapping, `past_due` keeping access,
+  lapsed→`none`, WhatsApp tier gating, a monotonicity check that no pricier
+  plan allows less, and the docs/BILLING.md prices), and the stub payment
+  provider (17 — signature verification incl. a tampered-plan replay, wrong
+  secret, absent secret, three malformed signatures; event normalization
+  incl. dropping an unrecognised plan or status; checkout refusing unless
+  explicitly selected; the provider registry naming ADR-010 on an
+  unimplemented provider).
+- typecheck / lint: pass
+- build: `npm run build` — pass (adds /api/webhooks/payments and
+  /dashboard/billing; 32 routes + Proxy)
+- isolation suites: **all ten PASSED** on real PostgreSQL 16, psql exit 0.
+  No regressions.
+
+### "Never trust client-submitted subscription state" — an absent grant
+`billing_isolation.sql` asserts that `authenticated`:
+  - **can** select its own subscription (1 row; org B invisible)
+  - **cannot** insert, update or delete a subscription — no grant at all
+  - an `update subscriptions set plan='pro', status='active'` as `authenticated`
+    raises **`insufficient_privilege`**, not a policy denial
+  - **cannot** rewrite `plan_limits` either (the price list is readable, not
+    writable)
+  - `anon` sees no billing at all and cannot execute `org_plan()`
+
+### "Plan access is server-enforced" — triggers, not call-site checks
+  - with the Starter allowance set to 2, the third product insert raises
+    **`PLIM1`** and only 2 rows exist
+  - **archiving a product frees its slot** — a retired line should not keep
+    filling the quota
+  - upgrading the plan raises the limit immediately, with no other change
+  - a **canceled** subscription cannot insert a product at all
+  - Starter **cannot enable WhatsApp** (`PLIM1`); Growth can; switching WhatsApp
+    *off* is allowed on any plan, so a downgrade never traps a business with
+    messages going out
+  - entitlement mapping verified in SQL: `past_due` keeps the plan,
+    `canceled` and `incomplete` resolve to `none`
+
+### The widget cap gap found and closed (ADR-074)
+Milestone 09 let a business set their own widget daily cap to 100,000 with
+nothing tying it to their plan — so the most expensive thing in the product was
+not plan-enforced. `widget_send` now caps at the lesser of the two. Proved: with
+the plan cap at 2 and the business's own setting at 100,000, message 3 returns
+`org_limit`; after cancellation a fresh session's first message returns
+`org_limit`.
+
+- manual QA (`npm start`, dummy env, `PAYMENT_PROVIDER=stub`):
+    - POST /api/webhooks/payments with no signature → **401**
+    - POST with a signature made from the wrong secret → **401**
+    - POST a tampered body with the original's valid signature → **401**
+    - POST correctly signed → **200** (no Supabase here, so no organization
+      matched and nothing was written)
+    - /dashboard/billing unauthenticated → 307 → /login?redirect=...
+    - dashboard still served `X-Frame-Options: DENY`
+- security checks:
+  - the checkout action never writes a plan; it only asks the provider for a
+    URL. A tampered plan field can at most start a checkout for a different
+    plan, which then has to be paid for
+  - the webhook verifies the **raw body** before acting (ADR-059) and claims
+    the event by id before applying it (ADR-060), so a retried renewal cannot
+    extend the period twice
+  - only fields the provider actually reported are written, so a "payment
+    failed" callback carrying no plan cannot blank the plan
+  - a cancellation moves the status and keeps the plan, so reactivation
+    restores the right tier rather than dropping the customer to Starter
+  - the stub provider's `createCheckout` refuses unless `PAYMENT_PROVIDER=stub`
+    is set explicitly, so it cannot silently stand in for a real provider
+- **not verified here — M11 is PARTIAL.** `tasks/11`'s acceptance criterion
+  ("test payment can create/update/cancel a subscription") needs a real
+  provider, and ADR-010 (Paystack vs Flutterwave) is still the founder's to
+  decide. What is proved: the schema, entitlements, every limit, the state
+  machine, signature verification, idempotency and tenant isolation — all
+  against the stub, which uses the same raw-body HMAC scheme. What is not: a
+  real checkout, a real provider's webhook payload shape, and settlement.
+  Closing it needs the ADR-010 decision plus that provider's test keys.

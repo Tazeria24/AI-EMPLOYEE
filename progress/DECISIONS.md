@@ -37,6 +37,7 @@ Boundary: tied to ADR-008 (paid dependency) — confirm with founder together.
 Context: CLAUDE.md/BILLING list "Paystack or Flutterwave"; one must be chosen for tasks/11.
 Recommendation: choose a single provider for MVP behind the payments abstraction; do not build both. Selection criteria: NGN subscription/recurring support, webhook signature verification, and settlement fit for the Nigerian ICP.
 Boundary: changes billing behavior and adds a paid dependency (CLAUDE.md decision boundary) — founder decides.
+Status update (Milestone 11): still PROPOSED and still the founder's to decide, but it no longer blocks the milestone. M11 shipped behind the payment abstraction with a stub provider (ADR-069), so choosing a vendor now means adding one adapter file rather than building billing.
 
 ## ADR-011 — Per-organization AI spend budget and public-endpoint guards (accepted)
 Decision: every public/AI endpoint (starting with the widget) must enforce per-business and per-visitor rate limits, a max messages/session, and a per-org daily token/₦ budget with a hard cutoff; spend is recorded in `usage_events`.
@@ -277,5 +278,37 @@ Reason: CLAUDE.md makes connecting production WhatsApp a founder decision, so th
 ## ADR-068 — Non-text messages are acknowledged, not interpreted (accepted)
 Decision: images, audio, documents and location messages get a fixed "I can only read text messages" reply, are recorded as a system message in the thread, and the model is never called.
 Reason: `tasks/10` says media handling "only if necessary". Guessing at an image's contents is exactly the invent-a-fact failure this product exists to avoid, and calling the model to say "I can't read that" would spend money to produce a constant.
+
+## ADR-069 — Milestone 11 built behind a payment abstraction; ADR-010 stays open (accepted)
+Decision: `lib/payments` defines a `PaymentProvider` interface (`createCheckout`, `verifyWebhook`, `parseEvent`) with one implementation, a deterministic **stub**. Everything else in the milestone — the schema, entitlements, limits, the state machine and the webhook — is provider-agnostic. `getPaymentProvider()` throws for any name but `stub`, naming ADR-010 in the error.
+Reason: choosing Paystack or Flutterwave changes billing behavior and adds a paid dependency, both of which CLAUDE.md reserves for the founder, and ADR-010 is still PROPOSED. This is the same move Milestone 04 made with embeddings: ship the abstraction and a stub, defer the vendor. The stub is not a toothless mock — it signs and verifies webhooks with the same raw-body HMAC scheme a real provider uses, so the webhook route, idempotency and the state machine are genuinely exercised. Adding the real provider is one file next to `stub.ts` and one `case`. `createCheckout` refuses unless `PAYMENT_PROVIDER=stub` is set explicitly, so the stub cannot quietly stand in for a real provider in production.
+
+## ADR-070 — The dashboard cannot write subscription state at all (accepted)
+Decision: `authenticated` holds SELECT on `subscriptions` and has **no INSERT, UPDATE or DELETE grant**. The only writer is the verified payment webhook, through the service-role client.
+Reason: `tasks/11` says "never trust client-submitted subscription state", and an absent grant is a stronger statement of that than a careful server action. There is no code path — no form, no action, no future API handler, no bug in one — that can move an organization onto a better plan. Proved in `billing_isolation.sql`: an `update subscriptions set plan = 'pro'` as `authenticated` raises `insufficient_privilege`. `plan_limits` is likewise readable and not writable, so the price list cannot be rewritten either.
+
+## ADR-071 — Plan limits are triggers, not checks at each call site (accepted)
+Decision: `enforce_plan_limit()` runs BEFORE INSERT on `products`, `knowledge_documents` and `automations`, reading the allowance from `plan_limits` for the organization's effective plan and raising SQLSTATE `PLIM1` when it is reached. `enforce_whatsapp_plan()` does the same for enabling WhatsApp.
+Reason: the other half of `tasks/11` — "plan access is server-enforced". The dashboard is not the only writer: an AI tool captures leads, the cron runner schedules follow-ups, and more paths will exist. A limit re-checked at each call site is correct until someone adds the call site that forgets. As a trigger it holds for every path, including ones not written yet. The raised message is already customer-facing ("Your starter plan allows 100 products. Upgrade to add more."), so `planLimitMessage()` passes it through rather than replacing it with something vaguer.
+
+## ADR-072 — `past_due` keeps access; only `canceled` and `incomplete` remove it (accepted)
+Decision: `org_plan()` resolves `trialing`, `active` and `past_due` to the organization's plan, and everything else to `none` — which allows no new data and no widget traffic.
+Reason: a failed card is usually an expired card, and a provider's dunning retries run for days. Switching a business's customer service off the moment a charge fails punishes their customers for our billing event, and is how a recoverable payment becomes a cancellation. `canceled` is where access actually stops. Cancellation keeps the plan on the row and only moves the status, so reactivating restores the right tier.
+
+## ADR-073 — Every organization starts on a 14-day Starter trial (accepted)
+Decision: the signup trigger creates a subscription with `plan='starter'`, `status='trialing'`, and a period ending 14 days out.
+Reason: an organization must never be in a state with no entitlement row at all — every limit lookup would then have to handle null, and the safe default (deny) would lock a new business out of its own dashboard. A trial also means the product can be used before it is paid for, which is what the pricing hypotheses in docs/BILLING.md assume.
+
+## ADR-074 — The widget's daily cap is the lesser of the plan's and the business's (accepted, fixes a Milestone 09 gap)
+Decision: `widget_send` now caps at `least(widget_settings.max_messages_per_day, plan_limits.max_widget_messages_per_day)`.
+Reason: a real gap found while building this milestone. M09 let a business set their own daily cap up to 100,000, and nothing tied that number to what they pay — so "plan access is server-enforced" was false for the most expensive thing in the product. The plan is now the ceiling and the business's own setting can only lower it; a lapsed subscription caps it at zero, which the visitor sees as the existing `org_limit` refusal. Proved in `billing_isolation.sql`.
+
+## ADR-075 — WhatsApp is a Growth-and-above channel (accepted)
+Decision: `plan_limits.whatsapp_enabled` is false for Starter, and a trigger refuses to set `whatsapp_integrations.enabled = true` on a plan without it. Switching off is always allowed, on any plan.
+Reason: WhatsApp costs per conversation on Meta's side as well as ours, so it cannot sit in the cheapest tier. Enforcing it on the row rather than in the dashboard action means it holds however the column is written. Allowing "off" unconditionally matters: a downgrade must never leave a business unable to stop messages going out.
+
+## ADR-076 — The payment webhook reuses the WhatsApp webhook's machinery verbatim (accepted)
+Decision: `POST /api/webhooks/payments` verifies a raw-body signature before acting (ADR-059), claims the event through `claim_integration_event` on the provider's event id (ADR-060), and answers 200 for every outcome past the signature (ADR-061).
+Reason: the threats are identical and the answers generalize — `integration_events` was already provider-agnostic. A forged callback here is the direct route to a free Pro plan, and a retried "subscription renewed" must not extend the period twice. Only fields the provider actually reported are written, so a "payment failed" callback carrying no plan cannot blank the plan.
 
 Add future decisions here. Do not rewrite history; append revisions.

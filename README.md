@@ -6,13 +6,14 @@ answers questions, recommends products, captures and qualifies leads, follows
 up, escalates to humans and reports activity — using **verified business data
 only**.
 
-Implemented so far: **Milestones 00–10** — application foundation,
+Implemented so far: **Milestones 00–11** — application foundation,
 authentication, multi-tenancy with RLS, the product catalog, the knowledge base
 with pgvector retrieval, the AI agent (implementation complete; live evaluation
 still pending — see `progress/PROGRESS.md`), the conversation inbox with human
 takeover, the lead pipeline, automated follow-up, the embeddable website
-widget, and the WhatsApp channel (built and proved deterministically; a live
-round trip against Meta is still pending — see `progress/PROGRESS.md`). See
+widget, the WhatsApp channel, and subscription billing (the last two are built
+and proved deterministically; a live round trip against Meta and a chosen
+payment provider are still pending — see `progress/PROGRESS.md`). See
 `docs/` for specifications and `progress/` for status, test results and
 decisions.
 
@@ -110,6 +111,7 @@ psql -d app -f supabase/migrations/0006_conversations.sql
 psql -d app -f supabase/migrations/0007_automations.sql
 psql -d app -f supabase/migrations/0008_widget.sql
 psql -d app -f supabase/migrations/0009_whatsapp.sql
+psql -d app -f supabase/migrations/0010_billing.sql
 psql -d app -f supabase/tests/tenant_isolation.sql      # prints PASSED on success
 psql -d app -f supabase/tests/products_isolation.sql    # prints PASSED on success
 psql -d app -f supabase/tests/knowledge_isolation.sql   # prints PASSED on success
@@ -119,6 +121,7 @@ psql -d app -f supabase/tests/leads_isolation.sql
 psql -d app -f supabase/tests/automations_isolation.sql
 psql -d app -f supabase/tests/widget_isolation.sql
 psql -d app -f supabase/tests/whatsapp_isolation.sql
+psql -d app -f supabase/tests/billing_isolation.sql
 ```
 
 On Supabase the shim is unnecessary — `auth.uid()` and the `authenticated`
@@ -270,13 +273,52 @@ message templates — so an automated follow-up reaches a customer only within
 Meta's 24-hour customer service window. Outside it the send is refused and
 recorded rather than attempted.
 
+
+## Plans and billing
+
+Three plans (Starter ₦15,000, Growth ₦35,000, Pro ₦75,000 per month), and every
+organization starts on a 14-day Starter trial so it is never without an
+entitlement.
+
+`tasks/11` sets two requirements, and both are answered by the database rather
+than by application code:
+
+- **"Never trust client-submitted subscription state."** The dashboard role has
+  SELECT on `subscriptions` and **no INSERT, UPDATE or DELETE grant at all**.
+  There is no form, action or future handler that can move an organization onto
+  a better plan — trying raises a privilege error. The only writer is the
+  verified payment webhook.
+- **"Plan access is server-enforced."** Limits are **triggers** on the tables
+  they govern, so they hold for every write path — the dashboard, an AI tool,
+  the cron runner, or something added next year — rather than being re-checked
+  at each call site until one is missed. Going over raises SQLSTATE `PLIM1`,
+  whose message is already written for the customer.
+
+Entitlement follows status: `trialing`, `active` and `past_due` all keep the
+plan — a failed card should start a conversation, not switch a business's
+customer service off mid-day — while `canceled` and `incomplete` fall back to
+`none`, which allows no new data and no widget traffic.
+
+The payment webhook reuses exactly what the WhatsApp one established: raw-body
+signature verification before anything is acted on, event claiming by the
+provider's event id so a retried renewal cannot extend the period twice, and a
+200 for every outcome past the signature.
+
+**No payment provider is chosen yet.** ADR-010 (Paystack vs Flutterwave) is a
+founder decision, so this milestone ships a `PaymentProvider` abstraction with a
+deterministic stub — the same approach the knowledge base took before the Voyage
+decision. The stub signs and verifies webhooks with the same scheme a real
+provider uses, so everything above is genuinely exercised; it just does not take
+money, and refuses to run unless `PAYMENT_PROVIDER=stub` is set explicitly.
+Adding a real provider is one file and one `case`.
+
 ## Project structure
 
 ```
 app/                 App Router routes and layouts
   api/health/        Health-check route handler
   api/widget/        Public widget endpoints (config, session, message, embed)
-  api/webhooks/      Signed provider webhooks (WhatsApp)
+  api/webhooks/      Signed provider webhooks (WhatsApp, payments)
   widget/[key]/      The embeddable chat, rendered on our own origin
   login, signup, …   Auth pages
   auth/confirm/      Email verification / recovery callback
@@ -304,6 +346,8 @@ lib/                 Utilities and integrations
   ai/agent/          The tool loop and its server action
   widget/            Public widget validation, settings, frame policy
   whatsapp/          Signature + handshake, payload parsing, 24h window, client
+  billing/           Plans, entitlements, usage, plan-limit errors
+  payments/          PaymentProvider abstraction (stub until ADR-010)
 evals/               Live evaluation cases (105) and runner
 proxy.ts             Session refresh + route protection (Next 16 proxy)
 supabase/            SQL migrations and tenant-isolation tests

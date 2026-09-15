@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { planLimitMessage } from "@/lib/billing/errors";
 import { getCurrentContext } from "@/lib/organizations/service";
 import { canManageOrg } from "@/lib/organizations/validation";
 import { parseCategory, parseProduct } from "./validation";
@@ -51,7 +52,7 @@ export async function createProduct(formData: FormData): Promise<void> {
       "/dashboard/products/new",
       error.code === "23505"
         ? "A product with that SKU already exists."
-        : "Could not create the product. Please try again.",
+        : planLimitMessage(error, "Could not create the product. Please try again."),
     );
   }
 
