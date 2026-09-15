@@ -1,0 +1,115 @@
+name: CI
+
+# docs/SECURITY.md requires typecheck, lint, tests and a production build on
+# every change, with the tenant-isolation, cross-tenant-retrieval and
+# prompt-injection suites as REQUIRED checks rather than something deferred to
+# a hardening milestone. This workflow is that requirement, enforced.
+#
+# Deliberately NOT here: `npm run eval`. It calls a real model and spends money
+# (ADR-037), so it stays an explicit, budgeted act.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# A superseded run tells you about code nobody is going to merge.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Types, lint, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # No API key, no network, no cost — including the prompt-injection and
+      # grounding suites, which is why they can gate every push.
+      - name: Unit tests
+        run: npm test
+
+      # A build failure is the one thing that cannot be caught by any of the
+      # above and breaks the deploy.
+      - name: Production build
+        run: npm run build
+
+  database:
+    name: Migrations and isolation suites
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # pgvector, because knowledge_chunks needs the vector type to exist
+        # before migration 0003 will apply at all.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: app
+      # Also proves the demo seed still applies and is still idempotent.
+      SEED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the PostgreSQL client
+        run: |
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+          psql --version
+
+      # Every migration applied to a fresh database, then every
+      # *_isolation.sql suite run against it. Both are discovered by glob, so a
+      # new suite or migration is picked up without touching this file.
+      - name: Migrations and isolation suites
+        run: npm run test:db
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Fails on high or critical only. Blocking every push on a low-severity
+      # advisory in a dev dependency trains people to ignore the job, which
+      # costs more than it saves.
+      - name: npm audit
+        run: npm audit --audit-level=high
