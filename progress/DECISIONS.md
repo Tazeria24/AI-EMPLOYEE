@@ -351,4 +351,28 @@ Reason: found during this audit, and it is the trap in the obvious implementatio
 Decision: `lib/supabase/admin.ts` no longer claims a number of exceptions. It states two admissible shapes: background jobs with no session (the two crons), and request handlers whose caller has no account **and whose tenant is resolved by the database rather than named by the caller** (the widget message route and both webhooks).
 Reason: ADR-054 said "the second and last"; ADR-063 corrected it to three; there are now five. The count kept moving and the rule never did, so the rule is what the documentation states. A promise the architecture cannot keep is worse than no promise — it stops being checked.
 
+## ADR-087 — The dashboard home is an activation checklist (accepted)
+Decision: `/dashboard` shows today's numbers and a six-step setup checklist, with exactly one step marked as the next action. The steps, their order and what counts as done live in a pure module (`lib/onboarding/checklist.ts`), and the signals come from one SQL function so every surface agrees.
+Reason: `tasks/13`'s acceptance criterion is that "a new business can onboard without founder intervention", which is really a question about whether the product tells them what to do next. The old dashboard said "Multi-tenancy is in place — next up is the product catalog", which is a note to ourselves. Order is not arbitrary: products before knowledge because a retailer's first customer question is always about a product, the widget before WhatsApp per ADR-002.
+
+## ADR-088 — The next action is never a step the business cannot take (accepted)
+Decision: "Your first conversation" and "your first lead" are marked `passive` and can never be the highlighted next action, though they still count toward the six.
+Reason: they happen when customers arrive. Highlighting one would be telling a business to go and wait, which reads as the product being broken. `isActivated()` likewise only requires the four steps they control — a business that has done everything it can should not be shown an unfinished checklist.
+
+## ADR-089 — Any member can send feedback, not just admins (accepted)
+Decision: the `feedback` insert policy is `is_org_member`, deliberately unlike every other write in the system (ADR-024 gives writes to owner/admin).
+Reason: restricting bug reports to admins loses exactly the people who use the product most — the person answering conversations all day is rarely the person who owns the account. The feedback you get otherwise is the feedback from people who already have your phone number, which is a biased sample of your beta. The isolation suite tests this difference explicitly so it is not mistaken for an oversight later.
+
+## ADR-090 — Activation is SECURITY INVOKER, so it cannot be used to probe (accepted)
+Decision: `organization_activation(org_id)` is SECURITY INVOKER, so its `EXISTS` checks run under RLS.
+Reason: it takes an organization id as an argument, which makes it exactly the shape of a function that leaks — "does organization X have products?" is a question about someone else's business. Under RLS, asking about another organization returns false for everything rather than the truth. Same reasoning as ADR-031 for `match_knowledge_chunks`.
+
+## ADR-091 — The demo business is deliberately awkward (accepted)
+Decision: `supabase/seed/demo_business.sql` seeds "Ada's Closet" with one product out of stock, one archived, policies containing real edge cases (a 7-day returns window, final-sale accessories, no Sunday delivery), and a conversation that ends in an escalation rather than a sale.
+Reason: a demo where everything is in stock and every question is easy teaches nothing about the product, and worse, it demos the wrong thing. The escalation is the behaviour actually being sold — the AI declining to answer a question about instalments is the feature, not a failure. Knowledge documents are seeded as `pending` rather than `ready` because chunking and embedding happen in the application; a seeded `ready` document with no chunks would be one the AI cannot retrieve.
+
+## ADR-092 — Known issues are published, not tracked privately (accepted)
+Decision: `docs/KNOWN_ISSUES.md` lists fifteen items in the repository, separating the four that block beta from eleven documented limitations, each naming the ADR that chose it.
+Reason: every limitation here was a deliberate trade — no templates, lexical search, ILIKE, manual lead scores, rate limiting that fails open. Written down, each is a support conversation that starts from "yes, we know, here is why". Undocumented, the same limitation is a lost beta customer and an argument about whether it was a bug.
+
 Add future decisions here. Do not rewrite history; append revisions.

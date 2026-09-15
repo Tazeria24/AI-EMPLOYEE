@@ -89,29 +89,44 @@ Status: IN PROGRESS
   sweep, a CI-gating prompt-injection suite, and all six audits written up in
   docs/SECURITY_AUDIT.md; hardening tests passing on real Postgres)
 
+- **Milestone 13 — Beta Launch** (PARTIAL — see below): the dashboard home
+  rebuilt as a six-step activation checklist that names one next action,
+  in-product feedback capture open to any member, an idempotent "Ada's Closet"
+  demo seed, a rewritten landing page, and the launch documentation — install
+  guide, internal QA script, release-candidate checklist and fifteen published
+  known issues; beta isolation tests passing on real Postgres
+
 ## Current milestone
-12 — Monitoring & Security Hardening (complete); M05/M10/M11 live verification still outstanding
+13 — Beta Launch (PARTIAL). **All twelve milestones are built. What remains is
+not code.**
 
 ## Next action
-Milestone 13 — Beta Launch is the last one, and it is the first that **cannot**
-be completed without the founder. Everything blocking it is external:
+The build is done. Every remaining item needs something only the founder can
+supply, and they are listed in priority order in `docs/RELEASE_CHECKLIST.md`
+with the reasoning in `docs/KNOWN_ISSUES.md` (items 1-4 block beta).
 
-1. **ADR-010 — Paystack or Flutterwave**, plus that provider's test keys. M11
-   is built behind the payment abstraction, so this is one adapter file.
-2. **ANTHROPIC_API_KEY + VOYAGE_API_KEY + a Supabase project** (migrations
-   0001–0011). This closes M05's 105-case evaluation — the oldest outstanding
-   item, and the only thing standing between the agent and a real customer.
-3. **A Meta test app + number** for M10's inbound → AI → outbound round trip.
-4. **A privacy notice and consent record.** Legal copy, not a migration. The
-   machinery exists (retention, erasure, the privacy page); the document a
-   customer is shown does not, and it is required before real PII is stored.
+1. **API keys + a Supabase project.** `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`,
+   `EMBEDDING_PROVIDER=voyage`, migrations 0001-0012. Then run `npm run eval`
+   (105 cases, ≈$2.05) and record the results. This is the oldest outstanding
+   item in the project — M05 has been built and unevaluated since it shipped,
+   and **no evidence exists about how the model actually behaves** with real
+   customers. Nothing else should go live before it.
+2. **ADR-010 — Paystack or Flutterwave**, plus test keys. One adapter file.
+3. **A privacy notice and consent record.** Legal copy. The retention and
+   erasure machinery is built; the document a customer is shown is not, and it
+   is required before real PII is stored.
+4. **A Meta test app + number** for WhatsApp's first round trip.
+5. Then work `docs/QA.md` end to end on the deployed instance before inviting
+   anyone.
 
-Deploying to production and connecting production WhatsApp are both
-decision-boundary stops needing explicit approval.
+Deploying to production, connecting production WhatsApp, sending real customer
+messages and charging a real card are all decision-boundary stops needing
+explicit approval.
 
-What can be done without any of the above: seed data and a demo script,
-onboarding polish, a landing page, and the beta feedback loop — the parts of
-`tasks/13` that do not touch production or spend money.
+Worth doing whenever there is appetite, and blocked by nothing: **CI**
+(known issue #15). Typecheck, lint, tests and the twelve SQL suites all pass
+and are run by hand each milestone, but nothing enforces them on a push — the
+SQL suites need a PostgreSQL service container.
 
 ## Rule
 Update this file after every completed milestone.

@@ -738,3 +738,61 @@ the row**, because that row is the replay-protection record.
   `ANTHROPIC_API_KEY`) — the deterministic injection suite is CI-gating, but
   behavioural evidence needs a model. And a written privacy notice and consent
   record, which are legal copy rather than code, are still needed before beta.
+
+---
+
+## Milestone 13 — Beta Launch (PARTIAL — the launch itself needs credentials)
+- date: 2026-09-15
+- commit: (this commit)
+- tests: `npm test` — **340 passed / 340** (31 files). New: the activation
+  checklist (17 — step order, the next action advancing, never pointing at a
+  passive step, skipping a completed step when a later one is outstanding) and
+  feedback validation (14 — kinds, length bounds, and dropping a `page` value
+  that is not an in-app path).
+- typecheck / lint: pass
+- build: `npm run build` — pass (adds /dashboard/feedback; 35 routes + Proxy)
+- isolation suites: **all twelve PASSED** on real PostgreSQL 16, psql exit 0.
+  No regressions.
+
+### Feedback is tenant-scoped, and open to members
+`beta_isolation.sql` proves:
+  - a plain **member** (not owner or admin) can file a report — a deliberate
+    departure from ADR-024, tested so it is not mistaken for an oversight
+  - that member sees their own organization's feedback and **not** org B's
+  - filing feedback against another organization raises `insufficient_privilege`
+  - the database rejects a blank report, one over 4 000 characters, and an
+    unknown kind
+
+### Activation reports reality, and cannot be used to probe
+  - a fresh organization has no profile, no products, and the widget off
+  - a **whitespace-only** business name does not count as a business name
+  - a **`pending`** knowledge document does not count as ready — it has no
+    chunks yet, so the AI cannot retrieve it, and claiming otherwise would tick
+    a box the customer has not actually got
+  - `organization_activation` is SECURITY INVOKER, so asking it about another
+    organization returns false for everything rather than revealing whether
+    they are set up
+
+### Demo seed
+`supabase/seed/demo_business.sql` applied cleanly against migrations 0001–0012
+and is **idempotent** — verified by running it three times, with the
+organization count staying at 1 and products at 8. The first version was not:
+deleting the demo auth user only cascaded the membership, leaving the
+organization and its categories behind, so the second run collided on a
+category primary key. It now deletes the organization explicitly first.
+
+- manual QA (`npm start`, dummy env):
+    - `/` renders the beta landing copy, with CTAs pointing at `/signup` and
+      `/login` (the old page had a non-functional "Get started" button and a
+      link to the health check)
+    - `/dashboard` and `/dashboard/feedback` unauthenticated → 307 → /login
+      with the redirect preserved
+- **not verified here — M13 is PARTIAL.** `tasks/13`'s acceptance criterion
+  ("a new business can onboard without founder intervention; AI conversation
+  works end-to-end") cannot be met in this environment: it needs a deployed
+  instance, API keys and a Supabase project. What is proved: the checklist
+  logic, the feedback path, tenant isolation on both, and that the seed script
+  applies. What is not: a single real end-to-end conversation, which is the
+  same gap M05 has carried since it was built.
+- `docs/QA.md` is the script to run once an instance exists; steps marked
+  **[no-key]** are the ones that work without an AI provider.
